@@ -5,8 +5,8 @@ if( USE_SYSROOT )
   set( SYSROOT_NAME prebuild_files )
   if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	FetchContent_Declare( ${SYSROOT_NAME}
-	  URL https://github.com/slviewer-3p/_build-all/releases/download/v0.5/sysroot.tar.bz2
-	  URL_HASH MD5=ab66c5ef670c50859ee99d979a524388
+	  URL https://github.com/slviewer-3p/_build-all/releases/download/v0.1-DRTVWR-559/sysroot-DRTVWR-559.tar.bz2
+	  URL_HASH MD5=ab9cd51d637ac458fe198552ef20e2c3
 	  DOWNLOAD_NO_PROGRESS ON
 	  )
   endif()
