@@ -1166,6 +1166,16 @@ static std::string add_xml_filter_to_gtkchooser(GtkWindow *picker)
 												   LLTrans::getString("xml_files") + " (*.xml)");
 }
 
+static std::string add_gltf_filter_to_gtkchooser(GtkWindow *picker)
+{
+	GtkFileFilter *gfilter = gtk_file_filter_new();
+	gtk_file_filter_add_pattern(gfilter, "*.gltf");
+	gtk_file_filter_add_pattern(gfilter, "*.glb");
+	std::string filtername = LLTrans::getString("scene_files") + " (*.gltf; *.glb)";
+	add_common_filters_to_gtkchooser(gfilter, picker, filtername);
+	return filtername;
+}
+
 static std::string add_collada_filter_to_gtkchooser(GtkWindow *picker)
 {
 	return add_simple_pattern_filter_to_gtkchooser(picker,  "*.dae",
@@ -1362,13 +1372,13 @@ BOOL LLFilePicker::getOpenFile( ELoadFilter filter, bool blocking )
 		case FFLOAD_XML:
 			filtername = add_xml_filter_to_gtkchooser(picker);
 			break;
-        case FFLOAD_GLTF:
-            filtername = dead_code_should_blow_up_here(picker);
-            break;
-        case FFLOAD_COLLADA:
-            filtername = add_collada_filter_to_gtkchooser(picker);
-            break;
-        case FFLOAD_IMAGE:
+		case FFLOAD_GLTF:
+		  filtername = add_gltf_filter_to_gtkchooser(picker);
+		  break;
+		case FFLOAD_COLLADA:
+		  filtername = add_collada_filter_to_gtkchooser(picker);
+		  break;
+		case FFLOAD_IMAGE:
 			filtername = add_imageload_filter_to_gtkchooser(picker);
 			break;
 		case FFLOAD_SCRIPT:
@@ -1515,6 +1525,10 @@ bool LLFilePicker::openFileDialog( int32_t filter, bool blocking, EType aType )
 				file_type = "sound_files";
 				file_dialog_filter = "*.wav";
 				break;
+			case FFSAVE_GLTF:
+				file_type = "scene_files";
+				file_dialog_filter = "*.gltf";
+				break;
 		}
 		file_dialog_title = LLTrans::getString("save_file_verb") + " " + LLTrans::getString(file_type);
 		file_dialog_filter = LLTrans::getString(file_type) + " \t" + file_dialog_filter;
@@ -1569,6 +1583,14 @@ bool LLFilePicker::openFileDialog( int32_t filter, bool blocking, EType aType )
 			case FFLOAD_EXE:
 				file_type = "executable_files";
 				break;
+            case FFLOAD_GLTF:
+		    case FFLOAD_MATERIAL:
+				file_type = "scene_files";
+				file_dialog_filter = "*.gltf";
+            case FFLOAD_MATERIAL_TEXTURE:
+                file_type = "material_texture";
+                file_dialog_filter = "*.{gltf,glb,tga,bmp,jpg,jpeg,png}";
+                break;
 		}
 		if (aType == EType::eOpenMultiple)
 		{
