@@ -2597,4 +2597,9 @@ void LLWindowSDL::toggleVSync(bool enable_vsync)
 {
 }
 
+U32 LLWindowSDL::getAvailableVRAMMegabytes()
+{
+    return 4096;
+}
+
 #endif // LL_SDL

@@ -152,7 +152,8 @@ public:
 	void makeContextCurrent(void* context) override;
 	void destroySharedContext(void* context) override;
 	void toggleVSync(bool enable_vsync) override;
-	
+    U32 getAvailableVRAMMegabytes() override;
+
 protected:
 	LLWindowSDL(LLWindowCallbacks* callbacks,
 		const std::string& title, int x, int y, int width, int height, U32 flags,
