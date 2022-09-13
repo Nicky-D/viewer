@@ -157,9 +157,8 @@ LLMatrix4 gGLObliqueProjectionInverse;
 
 std::list<LLGLUpdate*> LLGLUpdate::sGLQ;
 
-#if (LL_WINDOWS || LL_LINUX)  && !LL_MESA_HEADLESS
-
 #if LL_WINDOWS
+
 // WGL_ARB_create_context
 PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB = nullptr;
 
@@ -177,8 +176,6 @@ PFNWGLBLITCONTEXTFRAMEBUFFERAMDPROC             wglBlitContextFramebufferAMD = n
 // WGL_EXT_swap_control
 PFNWGLSWAPINTERVALEXTPROC    wglSwapIntervalEXT = nullptr;
 PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT = nullptr;
-
-#endif
 
 // GL_VERSION_1_2
 //PFNGLDRAWRANGEELEMENTSPROC  glDrawRangeElements = nullptr;
@@ -923,8 +920,8 @@ PFNGLSPECIALIZESHADERPROC                glSpecializeShader = nullptr;
 PFNGLMULTIDRAWARRAYSINDIRECTCOUNTPROC    glMultiDrawArraysIndirectCount = nullptr;
 PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC  glMultiDrawElementsIndirectCount = nullptr;
 PFNGLPOLYGONOFFSETCLAMPPROC              glPolygonOffsetClamp = nullptr;
-
 #endif
+
 
 LLGLManager gGLManager;
 
@@ -1086,7 +1083,6 @@ bool LLGLManager::initGL()
 		gGLHExts.mSysExts = strdup(extensions.c_str());
 	}
 #endif
-	
 	stop_glerror();
 
 	// Extract video card strings and convert to upper case to
@@ -1480,6 +1476,10 @@ void LLGLManager::shutdownGL()
 
 void LLGLManager::initExtensions()
 {
+#if LL_LINUX
+    glh_init_extensions("");
+#endif
+
 #if LL_MESA_HEADLESS
 # ifdef GL_ARB_multitexture
 	mHasMultitexture = TRUE;
@@ -1721,10 +1721,9 @@ void LLGLManager::initExtensions()
 	glGetIntegerv(GL_MAX_ELEMENTS_INDICES, (GLint*) &mGLMaxIndexRange);
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, (GLint*) &mGLMaxTextureSize);
 
-#if (LL_WINDOWS || LL_LINUX) && !LL_MESA_HEADLESS
+#if LL_WINDOWS
 	LL_DEBUGS("RenderInit") << "GL Probe: Getting symbols" << LL_ENDL;
 	
-#if LL_WINDOWS
     // WGL_AMD_gpu_association
     wglGetGPUIDsAMD = (PFNWGLGETGPUIDSAMDPROC)GLH_EXT_GET_PROC_ADDRESS("wglGetGPUIDsAMD");
     wglGetGPUInfoAMD = (PFNWGLGETGPUINFOAMDPROC)GLH_EXT_GET_PROC_ADDRESS("wglGetGPUInfoAMD");
@@ -1742,7 +1741,6 @@ void LLGLManager::initExtensions()
 
     // WGL_ARB_create_context
     wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)GLH_EXT_GET_PROC_ADDRESS("wglCreateContextAttribsARB");
-#endif
 
     // GL_VERSION_1_2
     glDrawRangeElements = (PFNGLDRAWRANGEELEMENTSPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawRangeElements");
