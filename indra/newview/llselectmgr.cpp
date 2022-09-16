@@ -63,6 +63,7 @@
 #include "llfloatertools.h"
 #include "llframetimer.h"
 #include "llfocusmgr.h"
+#include "llgltfmateriallist.h"
 #include "llhudeffecttrail.h"
 #include "llhudmanager.h"
 #include "llinventorymodel.h"
@@ -310,14 +311,29 @@ void LLSelectMgr::resetObjectOverrides(LLObjectSelectionHandle selected_handle)
 {
     struct f : public LLSelectedNodeFunctor
     {
+        f(bool a, LLSelectMgr* p) : mAvatarOverridesPersist(a), mManager(p) {}
+        bool mAvatarOverridesPersist;
+        LLSelectMgr* mManager;
         virtual bool apply(LLSelectNode* node)
         {
+            if (mAvatarOverridesPersist)
+            {
+                LLViewerObject* object = node->getObject();
+                if (object && !object->getParent())
+                {
+                    LLVOAvatar* avatar = object->asAvatar();
+                    if (avatar)
+                    {
+                        mManager->mAvatarOverridesMap.emplace(avatar->getID(), AvatarPositionOverride(node->mLastPositionLocal, node->mLastRotation, object));
+                    }
+                }
+            }
             node->mLastPositionLocal.setVec(0, 0, 0);
             node->mLastRotation = LLQuaternion();
             node->mLastScale.setVec(0, 0, 0);
             return true;
         }
-    } func;
+    } func(mAllowSelectAvatar, this);
 
     selected_handle->applyToNodes(&func);
 }
@@ -349,6 +365,93 @@ void LLSelectMgr::overrideObjectUpdates()
 		}
 	} func;
 	getSelection()->applyToNodes(&func);
+}
+
+void LLSelectMgr::resetAvatarOverrides()
+{
+    mAvatarOverridesMap.clear();
+}
+
+void LLSelectMgr::overrideAvatarUpdates()
+{
+    if (mAvatarOverridesMap.size() == 0)
+    {
+        return;
+    }
+
+    if (!mAllowSelectAvatar || !gFloaterTools)
+    {
+        resetAvatarOverrides();
+        return;
+    }
+
+    if (!gFloaterTools->getVisible() && getSelection()->isEmpty())
+    {
+        // when user switches selection, floater is invisible and selection is empty
+        LLToolset *toolset = LLToolMgr::getInstance()->getCurrentToolset();
+        if (toolset->isShowFloaterTools()
+            && toolset->isToolSelected(0)) // Pie tool
+        {
+            resetAvatarOverrides();
+            return;
+        }
+    }
+
+    // remove selected avatars from this list,
+    // but set object overrides to make sure avatar won't snap back 
+    struct f : public LLSelectedNodeFunctor
+    {
+        f(LLSelectMgr* p) : mManager(p) {}
+        LLSelectMgr* mManager;
+        virtual bool apply(LLSelectNode* selectNode)
+        {
+            LLViewerObject* object = selectNode->getObject();
+            if (object && !object->getParent())
+            {
+                LLVOAvatar* avatar = object->asAvatar();
+                if (avatar)
+                {
+                    uuid_av_override_map_t::iterator iter = mManager->mAvatarOverridesMap.find(avatar->getID());
+                    if (iter != mManager->mAvatarOverridesMap.end())
+                    {
+                        if (selectNode->mLastPositionLocal.isExactlyZero())
+                        {
+                            selectNode->mLastPositionLocal = iter->second.mLastPositionLocal;
+                        }
+                        if (selectNode->mLastRotation == LLQuaternion())
+                        {
+                            selectNode->mLastRotation = iter->second.mLastRotation;
+                        }
+                        mManager->mAvatarOverridesMap.erase(iter);
+                    }
+                }
+            }
+            return true;
+        }
+    } func(this);
+    getSelection()->applyToNodes(&func);
+
+    // Override avatar positions
+    uuid_av_override_map_t::iterator it = mAvatarOverridesMap.begin();
+    while (it != mAvatarOverridesMap.end())
+    {
+        if (it->second.mObject->isDead())
+        {
+            it = mAvatarOverridesMap.erase(it);
+        }
+        else
+        {
+            if (!it->second.mLastPositionLocal.isExactlyZero())
+            {
+                it->second.mObject->setPosition(it->second.mLastPositionLocal);
+            }
+            if (it->second.mLastRotation != LLQuaternion())
+            {
+                it->second.mObject->setRotation(it->second.mLastRotation);
+            }
+            it++;
+        }
+    }
 }
 
 //-----------------------------------------------------------------------------
@@ -886,7 +989,7 @@ void LLSelectMgr::addAsFamily(std::vector<LLViewerObject*>& objects, BOOL add_to
 		
 		// Can't select yourself
 		if (objectp->mID == gAgentID
-			&& !LLSelectMgr::getInstance()->mAllowSelectAvatar)
+			&& !mAllowSelectAvatar)
 		{
 			continue;
 		}
@@ -1792,16 +1895,56 @@ void LLSelectMgr::selectionSetGLTFMaterial(const LLUUID& mat_id)
                 asset_id = mItem->getAssetUUID();
             }
 
+            if (asset_id.notNull() && !objectp->hasRenderMaterialParams())
+            {
+                // make sure param section exists
+                objectp->setParameterEntryInUse(LLNetworkData::PARAMS_RENDER_MATERIAL, TRUE, false /*prevent an update*/);
+            }
+
             if (te != -1)
             {
-                objectp->setRenderMaterialID(te, asset_id);
+                LLTextureEntry* tep = objectp->getTE(te);
+                if (asset_id.notNull())
+                {
+                    tep->setGLTFMaterial(gGLTFMaterialList.getMaterial(asset_id));
+                }
+                else
+                {
+                    tep->setGLTFMaterial(nullptr);
+                }
+
+                objectp->faceMappingChanged();
+                gPipeline.markTextured(objectp->mDrawable);
+
+                LLRenderMaterialParams* param_block = (LLRenderMaterialParams*)objectp->getParameterEntry(LLNetworkData::PARAMS_RENDER_MATERIAL);
+                if (param_block)
+                {
+                    param_block->setMaterial(te, asset_id);
+                }
             }
-            else
+            else // Shouldn't happen?
             {
                 S32 num_faces = objectp->getNumTEs();
                 for (S32 face = 0; face < num_faces; face++)
                 {
-                    objectp->setRenderMaterialID(face, asset_id);
+                    LLTextureEntry* tep = objectp->getTE(face);
+                    if (asset_id.notNull())
+                    {
+                        tep->setGLTFMaterial(gGLTFMaterialList.getMaterial(asset_id));
+                    }
+                    else
+                    {
+                        tep->setGLTFMaterial(nullptr);
+                    }
+
+                    objectp->faceMappingChanged();
+                    gPipeline.markTextured(objectp->mDrawable);
+
+                    LLRenderMaterialParams* param_block = (LLRenderMaterialParams*)objectp->getParameterEntry(LLNetworkData::PARAMS_RENDER_MATERIAL);
+                    if (param_block)
+                    {
+                        param_block->setMaterial(face, asset_id);
+                    }
                 }
             }
 
@@ -1809,16 +1952,16 @@ void LLSelectMgr::selectionSetGLTFMaterial(const LLUUID& mat_id)
         }
     };
 
-    if (item && !item->getPermissions().allowOperationBy(PERM_COPY, gAgent.getID()))
+    // TODO: once PBR starts supporting permissions, implement/figure this out
+    /*if (item && !item->getPermissions().allowOperationBy(PERM_COPY, gAgent.getID()))
     {
         getSelection()->applyNoCopyTextureToTEs(item);
     }
-    else
+    else*/
     {
         f setfunc(item, mat_id);
         getSelection()->applyToTEs(&setfunc);
     }
-
 
     struct g : public LLSelectedObjectFunctor
     {
@@ -1826,9 +1969,26 @@ void LLSelectMgr::selectionSetGLTFMaterial(const LLUUID& mat_id)
         g(LLViewerInventoryItem* item) : mItem(item) {}
         virtual bool apply(LLViewerObject* object)
         {
+            if (object && !object->permModify())
+            {
+                return false;
+            }
+
+            LLRenderMaterialParams* param_block = (LLRenderMaterialParams*)object->getParameterEntry(LLNetworkData::PARAMS_RENDER_MATERIAL);
+            if (param_block)
+            {
+                if (param_block->isEmpty())
+                {
+                    object->setHasRenderMaterialParams(false);
+                }
+                else
+                {
+                    object->parameterChanged(LLNetworkData::PARAMS_RENDER_MATERIAL, true);
+                }
+            }
+
             if (!mItem)
             {
-                object->sendTEUpdate();
                 // 1 particle effect per object				
                 LLHUDEffectSpiral *effectp = (LLHUDEffectSpiral *)LLHUDManager::getInstance()->createViewerEffect(LLHUDObject::LL_HUD_EFFECT_BEAM, TRUE);
                 effectp->setSourceObject(gAgentAvatarp);
@@ -1836,6 +1996,8 @@ void LLSelectMgr::selectionSetGLTFMaterial(const LLUUID& mat_id)
                 effectp->setDuration(LL_HUD_DUR_SHORT);
                 effectp->setColor(LLColor4U(gAgent.getEffectColor()));
             }
+
+            object->sendTEUpdate();
             return true;
         }
     } sendfunc(item);
@@ -2025,15 +2187,40 @@ void LLSelectMgr::selectionRevertGLTFMaterials()
     {
         LLObjectSelectionHandle mSelectedObjects;
         f(LLObjectSelectionHandle sel) : mSelectedObjects(sel) {}
-        bool apply(LLViewerObject* object, S32 te)
+        bool apply(LLViewerObject* objectp, S32 te)
         {
-            if (object->permModify())
+            if (objectp && !objectp->permModify())
             {
-                LLSelectNode* nodep = mSelectedObjects->findNode(object);
-                if (nodep && te < (S32)nodep->mSavedGLTFMaterials.size())
+                return false;
+            }
+
+            LLSelectNode* nodep = mSelectedObjects->findNode(objectp);
+            if (nodep && te < (S32)nodep->mSavedGLTFMaterials.size())
+            {
+                LLUUID asset_id = nodep->mSavedGLTFMaterials[te];
+                LLTextureEntry* tep = objectp->getTE(te);
+                if (asset_id.notNull())
                 {
-                    LLUUID id = nodep->mSavedGLTFMaterials[te];
-                    object->setRenderMaterialID(te, id);
+                    tep->setGLTFMaterial(gGLTFMaterialList.getMaterial(asset_id));
+
+                    if (!objectp->hasRenderMaterialParams())
+                    {
+                        // make sure param section exists
+                        objectp->setParameterEntryInUse(LLNetworkData::PARAMS_RENDER_MATERIAL, TRUE, false /*prevent an immediate update*/);
+                    }
+                }
+                else
+                {
+                    tep->setGLTFMaterial(nullptr);
+                }
+
+                objectp->faceMappingChanged();
+                gPipeline.markTextured(objectp->mDrawable);
+
+                LLRenderMaterialParams* param_block = (LLRenderMaterialParams*)objectp->getParameterEntry(LLNetworkData::PARAMS_RENDER_MATERIAL);
+                if (param_block)
+                {
+                    param_block->setMaterial(te, asset_id);
                 }
             }
             return true;
@@ -2041,7 +2228,32 @@ void LLSelectMgr::selectionRevertGLTFMaterials()
     } setfunc(mSelectedObjects);
     getSelection()->applyToTEs(&setfunc);
 
-    LLSelectMgrSendFunctor sendfunc;
+    struct g : public LLSelectedObjectFunctor
+    {
+        virtual bool apply(LLViewerObject* object)
+        {
+            if (object && !object->permModify())
+            {
+                return false;
+            }
+
+            LLRenderMaterialParams* param_block = (LLRenderMaterialParams*)object->getParameterEntry(LLNetworkData::PARAMS_RENDER_MATERIAL);
+            if (param_block)
+            {
+                if (param_block->isEmpty())
+                {
+                    object->setHasRenderMaterialParams(false);
+                }
+                else
+                {
+                    object->parameterChanged(LLNetworkData::PARAMS_RENDER_MATERIAL, true);
+                }
+            }
+
+            object->sendTEUpdate();
+            return true;
+        }
+    } sendfunc;
     getSelection()->applyToObjects(&sendfunc);
 }
 
@@ -6402,6 +6614,24 @@ LLSelectNode::LLSelectNode(const LLSelectNode& nodep)
 
 LLSelectNode::~LLSelectNode()
 {
+    LLSelectMgr *manager = LLSelectMgr::getInstance();
+    if (manager->mAllowSelectAvatar
+        && (!mLastPositionLocal.isExactlyZero()
+            || mLastRotation != LLQuaternion()))
+    {
+        LLViewerObject* object = getObject(); //isDead() check
+        if (object && !object->getParent())
+        {
+            LLVOAvatar* avatar = object->asAvatar();
+            if (avatar)
+            {
+                // Avatar was moved and needs to stay that way
+                manager->mAvatarOverridesMap.emplace(avatar->getID(), LLSelectMgr::AvatarPositionOverride(mLastPositionLocal, mLastRotation, object));
+            }
+        }
+    }
+
+
 	delete mPermissions;
 	mPermissions = NULL;
 }
@@ -6923,6 +7153,10 @@ void LLSelectMgr::updateSelectionCenter()
 	const F32 MOVE_SELECTION_THRESHOLD = 1.f;		//  Movement threshold in meters for updating selection
 													//  center (tractor beam)
 
+    // override any avatar updates received
+    // Works only if avatar was repositioned
+    // and edit floater is visible
+    overrideAvatarUpdates();
 	//override any object updates received
 	//for selected objects
 	overrideObjectUpdates();

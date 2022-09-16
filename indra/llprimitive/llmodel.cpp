@@ -187,6 +187,15 @@ void LLModel::trimVolumeFacesToSize(U32 new_count, LLVolume::face_list_t* remain
 	}
 }
 
+// generate mikkt space tangents and cache optimize
+void LLModel::preprocessVolumeFaces()
+{
+    for (auto& face : mVolumeFaces)
+    {
+        face.cacheOptimize();
+    }
+}
+
 // Shrink the model to fit
 // on a 1x1x1 cube centered at the origin.
 // The positions and extents
@@ -296,6 +305,7 @@ void LLModel::normalizeVolumeFaces()
 			// the positions to fit within the unit cube.
 			LLVector4a* pos = (LLVector4a*) face.mPositions;
 			LLVector4a* norm = (LLVector4a*) face.mNormals;
+            LLVector4a* t = (LLVector4a*)face.mMikktSpaceTangents;
 
 			for (U32 j = 0; j < face.mNumVertices; ++j)
 			{
@@ -306,6 +316,14 @@ void LLModel::normalizeVolumeFaces()
 					norm[j].mul(inv_scale);
 					norm[j].normalize3();
 				}
+
+                if (t)
+                {
+                    F32 w = t[j].getF32ptr()[3];
+                    t[j].mul(inv_scale);
+                    t[j].normalize3();
+                    t[j].getF32ptr()[3] = w;
+                }
 			}
 		}
 
@@ -319,6 +337,12 @@ void LLModel::normalizeVolumeFaces()
 		mNormalizedScale.set(normalized_scale.getF32ptr());
 		mNormalizedTranslation.set(trans.getF32ptr());
 		mNormalizedTranslation *= -1.f; 
+
+        for (auto& face : mVolumeFaces)
+        {
+            face.mNormalizedScale = mNormalizedScale;
+            face.mNormalizedTranslation = mNormalizedTranslation;
+        }
 	}
 }
 
@@ -726,10 +750,12 @@ LLSD LLModel::writeModel(
 				LLSD::Binary verts(face.mNumVertices*3*2);
 				LLSD::Binary tc(face.mNumVertices*2*2);
 				LLSD::Binary normals(face.mNumVertices*3*2);
+                LLSD::Binary tangents(face.mNumVertices * 4 * 2);
 				LLSD::Binary indices(face.mNumIndices*2);
 
 				U32 vert_idx = 0;
 				U32 norm_idx = 0;
+                //U32 tan_idx = 0;
 				U32 tc_idx = 0;
 			
 				LLVector2* ftc = (LLVector2*) face.mTexCoords;
@@ -782,6 +808,24 @@ LLSD LLModel::writeModel(
 							normals[norm_idx++] = buff[1];
 						}
 					}
+
+#if 0
+                    if (face.mMikktSpaceTangents)
+                    { //normals
+                        F32* tangent = face.mMikktSpaceTangents[j].getF32ptr();
+
+                        for (U32 k = 0; k < 4; ++k)
+                        { //for each component
+                            //convert to 16-bit normalized
+                            U16 val = (U16)((tangent[k] + 1.f) * 0.5f * 65535);
+                            U8* buff = (U8*)&val;
+
+                            //write to binary buffer
+                            tangents[tan_idx++] = buff[0];
+                            tangents[tan_idx++] = buff[1];
+                        }
+                    }
+#endif
 					
 					//texcoord
 					if (face.mTexCoords)
@@ -812,12 +856,20 @@ LLSD LLModel::writeModel(
 				//write out face data
 				mdl[model_names[idx]][i]["PositionDomain"]["Min"] = min_pos.getValue();
 				mdl[model_names[idx]][i]["PositionDomain"]["Max"] = max_pos.getValue();
+                mdl[model_names[idx]][i]["NormalizedScale"] = face.mNormalizedScale.getValue();
+                mdl[model_names[idx]][i]["NormalizedTranslation"] = face.mNormalizedTranslation.getValue();
+
 				mdl[model_names[idx]][i]["Position"] = verts;
 				
 				if (face.mNormals)
 				{
 					mdl[model_names[idx]][i]["Normal"] = normals;
 				}
+
+                if (face.mMikktSpaceTangents)
+                {
+                    mdl[model_names[idx]][i]["Tangent"] = tangents;
+                }
 
 				if (face.mTexCoords)
 				{
@@ -843,7 +895,7 @@ LLSD LLModel::writeModel(
 					{
 						LLVector3 pos(face.mPositions[j].getF32ptr());
 
-						weight_list& weights = high->getJointInfluences(pos);
+						weight_list& weights = model[idx]->getJointInfluences(pos);
 
 						S32 count = 0;
 						for (weight_list::iterator iter = weights.begin(); iter != weights.end(); ++iter)
@@ -1553,6 +1605,25 @@ void LLMeshSkinInfo::updateHash()
     mHash = digest[0];
 }
 
+U32 LLMeshSkinInfo::sizeBytes() const
+{
+    U32 res = sizeof(LLUUID); // mMeshID
+
+    res += sizeof(std::vector<std::string>) + sizeof(std::string) * mJointNames.size();
+    for (U32 i = 0; i < mJointNames.size(); ++i)
+    {
+        res += mJointNames[i].size(); // actual size, not capacity
+    }
+
+    res += sizeof(std::vector<S32>) + sizeof(S32) * mJointNums.size();
+    res += sizeof(std::vector<LLMatrix4>) + 16 * sizeof(float) * mInvBindMatrix.size();
+    res += sizeof(std::vector<LLMatrix4>) + 16 * sizeof(float) * mAlternateBindMatrix.size();
+    res += 16 * sizeof(float); //mBindShapeMatrix
+    res += sizeof(float) + 3 * sizeof(bool);
+
+    return res;
+}
+
 LLModel::Decomposition::Decomposition(LLSD& data)
 {
 	fromLLSD(data);
@@ -1657,6 +1728,30 @@ void LLModel::Decomposition::fromLLSD(LLSD& decomp)
 		//but contains no base hull
 		mBaseHullMesh.clear();
 	}
+}
+
+U32 LLModel::Decomposition::sizeBytes() const
+{
+    U32 res = sizeof(LLUUID); // mMeshID
+
+    res += sizeof(LLModel::convex_hull_decomposition) + sizeof(std::vector<LLVector3>) * mHull.size();
+    for (U32 i = 0; i < mHull.size(); ++i)
+    {
+        res += mHull[i].size() * sizeof(LLVector3);
+    }
+
+    res += sizeof(LLModel::hull) + sizeof(LLVector3) * mBaseHull.size();
+
+    res += sizeof(std::vector<LLModel::PhysicsMesh>) + sizeof(std::vector<LLModel::PhysicsMesh>) * mMesh.size();
+    for (U32 i = 0; i < mMesh.size(); ++i)
+    {
+        res += mMesh[i].sizeBytes();
+    }
+
+    res += sizeof(std::vector<LLModel::PhysicsMesh>) * 2;
+    res += mBaseHullMesh.sizeBytes() + mPhysicsShapeMesh.sizeBytes();
+
+    return res;
 }
 
 bool LLModel::Decomposition::hasHullList() const

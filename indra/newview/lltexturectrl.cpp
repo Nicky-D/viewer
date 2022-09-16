@@ -416,15 +416,6 @@ BOOL LLFloaterTexturePicker::postBuild()
 
 	mInventoryPanel = getChild<LLInventoryPanel>("inventory panel");
 
-    // if can select both materials and textures, set textures_material_combo's layout as visible
-    childSetVisible("combo_layout", mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL);
-
-    mTextureMaterialsCombo = getChild<LLComboBox>("textures_material_combo");
-    mTextureMaterialsCombo->setCommitCallback(onSelectTextureMaterials, this);
-
-    // set the combo box to the first entry in the list (currently textures and materials)
-    mTextureMaterialsCombo->selectByValue(0);
-
 	mModeSelector = getChild<LLComboBox>("mode_selection");
 	mModeSelector->setCommitCallback(onModeSelect, this);
 	mModeSelector->selectByValue(0);
@@ -435,7 +426,7 @@ BOOL LLFloaterTexturePicker::postBuild()
         // selected at startup, we call the same function that is triggered
         // when a texture/materials/both choice is made and let it take care
         // of setting the filters
-        onSelectTextureMaterials(0, this);
+        refreshInventoryFilter();
 
 		mInventoryPanel->setFilterPermMask(mImmediateFilterPermMask);
 		mInventoryPanel->setSelectCallback(boost::bind(&LLFloaterTexturePicker::onSelectionChange, this, _1, _2));
@@ -469,21 +460,7 @@ BOOL LLFloaterTexturePicker::postBuild()
 
 	mLocalScrollCtrl = getChild<LLScrollListCtrl>("l_name_list");
 	mLocalScrollCtrl->setCommitCallback(onLocalScrollCommit, this);
-    mLocalScrollCtrl->clearRows();
-
-    if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL)
-    {
-        LLLocalBitmapMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-        LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-    }
-    else if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE)
-    {
-        LLLocalBitmapMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-    }
-    else if (mInventoryPickType == LLTextureCtrl::PICK_MATERIAL)
-    {
-        LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-    }
+    refreshLocalList();
 
 	mNoCopyTextureSelected = FALSE;
 
@@ -531,6 +508,8 @@ void LLFloaterTexturePicker::draw()
 
 			if (LLAvatarAppearanceDefines::LLAvatarAppearanceDictionary::isBakedImageId(mImageAssetID))
 			{
+                // TODO: Fix this! Picker is not warrantied to be connected to a selection
+                // LLSelectMgr shouldn't be used in texture picker
 				LLViewerObject* obj = LLSelectMgr::getInstance()->getSelection()->getFirstObject();
 				if (obj)
 				{
@@ -843,7 +822,6 @@ void LLFloaterTexturePicker::onModeSelect(LLUICtrl* ctrl, void *userdata)
 	self->getChild<LLButton>("Blank")->setVisible(index == 0 ? TRUE : FALSE);
 	self->getChild<LLButton>("None")->setVisible(index == 0 ? TRUE : FALSE);
 	self->getChild<LLButton>("Pipette")->setVisible(index == 0 ? TRUE : FALSE);
-    self->getChild<LLComboBox>("textures_material_combo")->setVisible(index == 0 ? TRUE : FALSE);
 	self->getChild<LLFilterEditor>("inventory search editor")->setVisible(index == 0 ? TRUE : FALSE);
 	self->getChild<LLInventoryPanel>("inventory panel")->setVisible(index == 0 ? TRUE : FALSE);
 
@@ -963,21 +941,7 @@ void LLFloaterTexturePicker::onBtnRemove(void* userdata)
 
 		self->getChild<LLButton>("l_rem_btn")->setEnabled(false);
 		self->getChild<LLButton>("l_upl_btn")->setEnabled(false);
-        self->mLocalScrollCtrl->clearRows();
-
-        if (self->mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL)
-        {
-            LLLocalBitmapMgr::getInstance()->feedScrollList(self->mLocalScrollCtrl);
-            LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(self->mLocalScrollCtrl);
-        }
-        else if (self->mInventoryPickType == LLTextureCtrl::PICK_TEXTURE)
-        {
-            LLLocalBitmapMgr::getInstance()->feedScrollList(self->mLocalScrollCtrl);
-        }
-        else if (self->mInventoryPickType == LLTextureCtrl::PICK_MATERIAL)
-        {
-            LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(self->mLocalScrollCtrl);
-        }
+        self->refreshLocalList();
 	}
 }
 
@@ -1205,36 +1169,46 @@ void LLFloaterTexturePicker::onFilterEdit(const std::string& search_string )
 	mInventoryPanel->setFilterSubString(search_string);
 }
 
-void LLFloaterTexturePicker::onSelectTextureMaterials(LLUICtrl* ctrl, void *userdata)
+void LLFloaterTexturePicker::refreshLocalList()
 {
-    LLFloaterTexturePicker* self = (LLFloaterTexturePicker*)userdata;
-    int index = self->mTextureMaterialsCombo->getValue().asInteger();
+    mLocalScrollCtrl->clearRows();
 
+    if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL)
+    {
+        LLLocalBitmapMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
+        LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
+    }
+    else if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE)
+    {
+        LLLocalBitmapMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
+    }
+    else if (mInventoryPickType == LLTextureCtrl::PICK_MATERIAL)
+    {
+        LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
+    }
+}
+
+void LLFloaterTexturePicker::refreshInventoryFilter()
+{
     U32 filter_types = 0x0;
 
-    if (self->mInventoryPickType != LLTextureCtrl::PICK_TEXTURE_MATERIAL)
-    {
-        // mInventoryPickType overrides combo
-        index = self->mInventoryPickType;
-    }
-
-    if (index == LLTextureCtrl::PICK_TEXTURE_MATERIAL)
+    if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL)
     {
         filter_types |= 0x1 << LLInventoryType::IT_TEXTURE;
         filter_types |= 0x1 << LLInventoryType::IT_SNAPSHOT;
         filter_types |= 0x1 << LLInventoryType::IT_MATERIAL;
     }
-    else if (index == LLTextureCtrl::PICK_TEXTURE)
+    else if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE)
     {
         filter_types |= 0x1 << LLInventoryType::IT_TEXTURE;
         filter_types |= 0x1 << LLInventoryType::IT_SNAPSHOT;
     }
-    else if (index == LLTextureCtrl::PICK_MATERIAL)
+    else if (mInventoryPickType == LLTextureCtrl::PICK_MATERIAL)
     {
         filter_types |= 0x1 << LLInventoryType::IT_MATERIAL;
     }
 
-    self->mInventoryPanel->setFilterTypes(filter_types);
+    mInventoryPanel->setFilterTypes(filter_types);
 }
 
 void LLFloaterTexturePicker::setLocalTextureEnabled(BOOL enabled)
@@ -1267,27 +1241,8 @@ void LLFloaterTexturePicker::setBakeTextureEnabled(BOOL enabled)
 void LLFloaterTexturePicker::setInventoryPickType(LLTextureCtrl::EPickInventoryType type)
 {
     mInventoryPickType = type;
-
-    // if can select both materials and textures, set textures_material_combo's layout as visible
-    childSetVisible("combo_layout", mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL);
-
-    mLocalScrollCtrl->clearRows();
-    if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE_MATERIAL)
-    {
-        LLLocalBitmapMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-        LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-    }
-    else if (mInventoryPickType == LLTextureCtrl::PICK_TEXTURE)
-    {
-        LLLocalBitmapMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-    }
-    else if (mInventoryPickType == LLTextureCtrl::PICK_MATERIAL)
-    {
-        LLLocalGLTFMaterialMgr::getInstance()->feedScrollList(mLocalScrollCtrl);
-    }
-
-    // refresh filters
-    onSelectTextureMaterials(0, this);
+    refreshLocalList();
+    refreshInventoryFilter();
 }
 
 void LLFloaterTexturePicker::onPickerCallback(const std::vector<std::string>& filenames, LLHandle<LLFloater> handle)
@@ -1712,56 +1667,7 @@ void LLTextureCtrl::onFloaterCommit(ETexturePickOp op, LLUUID id)
 
 			if (op == TEXTURE_SELECT && mOnSelectCallback)
 			{
-                // determine if the selected item in inventory is a material
-                // by finding the item in inventory and inspecting its (IT_) type
-                LLUUID item_id = floaterp->findItemID(floaterp->getAssetID(), FALSE);
-                LLInventoryItem* item = gInventory.getItem(item_id);
-                if (item)
-                {
-                    if (item->getInventoryType() == LLInventoryType::IT_MATERIAL)
-                    {
-                        // ask the selection manager for the list of selected objects
-                        // to which the material will be applied.
-                        LLObjectSelectionHandle selectedObjectsHandle = LLSelectMgr::getInstance()->getSelection();
-                        if (selectedObjectsHandle.notNull())
-                        {
-                            LLObjectSelection* selectedObjects = selectedObjectsHandle.get();
-                            if (!selectedObjects->isEmpty())
-                            {
-                                // we have a selection - iterate over it
-                                for (LLObjectSelection::valid_iterator obj_iter = selectedObjects->valid_begin();
-                                        obj_iter != selectedObjects->valid_end();
-                                            ++obj_iter)
-                                {
-                                    LLSelectNode* object = *obj_iter;
-                                    LLViewerObject* viewer_object = object->getObject();
-                                    if (viewer_object)
-                                    {
-                                        // the asset ID of the material we want to apply
-                                        // the the selected objects
-                                        LLUUID asset_id = item->getAssetUUID();
-
-                                        // iterate over the faces in the object
-                                        // TODO: consider the case where user has 
-                                        // selected only certain faces
-                                        S32 num_faces = viewer_object->getNumTEs();
-                                        for (S32 face = 0; face < num_faces; face++)
-                                        {
-                                            viewer_object->setRenderMaterialID(face, asset_id);
-                                            dialog_refresh_all();
-                                        }
-                                        viewer_object->sendTEUpdate();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                else
-                // original behavior for textures, not materials
-                {
-                    mOnSelectCallback(this, LLSD());
-                }
+                mOnSelectCallback(this, LLSD());
 			}
 			else if (op == TEXTURE_CANCEL && mOnCancelCallback)
 			{

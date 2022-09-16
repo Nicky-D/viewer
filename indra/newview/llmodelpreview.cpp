@@ -1308,9 +1308,10 @@ F32 LLModelPreview::genMeshOptimizerPerModel(LLModel *base_model, LLModel *targe
 
     // extra space for normals and text coords
     S32 tc_bytes_size = ((size_vertices * sizeof(LLVector2)) + 0xF) & ~0xF;
-    LLVector4a* combined_positions = (LLVector4a*)ll_aligned_malloc<64>(sizeof(LLVector4a) * 2 * size_vertices + tc_bytes_size);
+    LLVector4a* combined_positions = (LLVector4a*)ll_aligned_malloc<64>(sizeof(LLVector4a) * 3 * size_vertices + tc_bytes_size);
     LLVector4a* combined_normals = combined_positions + size_vertices;
-    LLVector2* combined_tex_coords = (LLVector2*)(combined_normals + size_vertices);
+    LLVector4a* combined_tangents = combined_normals + size_vertices;
+    LLVector2* combined_tex_coords = (LLVector2*)(combined_tangents + size_vertices);
 
     // copy indices and vertices into new buffers
     S32 combined_positions_shift = 0;
@@ -1320,12 +1321,18 @@ F32 LLModelPreview::genMeshOptimizerPerModel(LLModel *base_model, LLModel *targe
     {
         const LLVolumeFace &face = base_model->getVolumeFace(face_idx);
 
+        // ensure tangents have been generated or loaded
+        llassert(face.mMikktSpaceTangents);
+
         // Vertices
         S32 copy_bytes = face.mNumVertices * sizeof(LLVector4a);
         LLVector4a::memcpyNonAliased16((F32*)(combined_positions + combined_positions_shift), (F32*)face.mPositions, copy_bytes);
 
         // Normals
         LLVector4a::memcpyNonAliased16((F32*)(combined_normals + combined_positions_shift), (F32*)face.mNormals, copy_bytes);
+
+        // Tangents
+        LLVector4a::memcpyNonAliased16((F32*)(combined_tangents + combined_positions_shift), (F32*)face.mMikktSpaceTangents, copy_bytes);
 
         // Tex coords
         copy_bytes = face.mNumVertices * sizeof(LLVector2);
@@ -1428,9 +1435,10 @@ F32 LLModelPreview::genMeshOptimizerPerModel(LLModel *base_model, LLModel *targe
 
     // IV. Repack back into individual faces
 
-    LLVector4a* buffer_positions = (LLVector4a*)ll_aligned_malloc<64>(sizeof(LLVector4a) * 2 * size_vertices + tc_bytes_size);
+    LLVector4a* buffer_positions = (LLVector4a*)ll_aligned_malloc<64>(sizeof(LLVector4a) * 3 * size_vertices + tc_bytes_size);
     LLVector4a* buffer_normals = buffer_positions + size_vertices;
-    LLVector2* buffer_tex_coords = (LLVector2*)(buffer_normals + size_vertices);
+    LLVector4a* buffer_tangents = buffer_normals + size_vertices;
+    LLVector2* buffer_tex_coords = (LLVector2*)(buffer_tangents + size_vertices);
     S32 buffer_idx_size = (size_indices * sizeof(U16) + 0xF) & ~0xF;
     U16* buffer_indices = (U16*)ll_aligned_malloc_16(buffer_idx_size);
     S32* old_to_new_positions_map = new S32[size_vertices];
@@ -1511,6 +1519,7 @@ F32 LLModelPreview::genMeshOptimizerPerModel(LLModel *base_model, LLModel *targe
                     // Copy vertice, normals, tcs
                     buffer_positions[buf_positions_copied] = combined_positions[idx];
                     buffer_normals[buf_positions_copied] = combined_normals[idx];
+                    buffer_tangents[buf_positions_copied] = combined_tangents[idx];
                     buffer_tex_coords[buf_positions_copied] = combined_tex_coords[idx];
 
                     old_to_new_positions_map[idx] = buf_positions_copied;
@@ -1549,12 +1558,13 @@ F32 LLModelPreview::genMeshOptimizerPerModel(LLModel *base_model, LLModel *targe
         {
             new_face.resizeIndices(buf_indices_copied);
             new_face.resizeVertices(buf_positions_copied);
-
+            new_face.allocateTangents(buf_positions_copied, true);
             S32 idx_size = (buf_indices_copied * sizeof(U16) + 0xF) & ~0xF;
             LLVector4a::memcpyNonAliased16((F32*)new_face.mIndices, (F32*)buffer_indices, idx_size);
 
             LLVector4a::memcpyNonAliased16((F32*)new_face.mPositions, (F32*)buffer_positions, buf_positions_copied * sizeof(LLVector4a));
             LLVector4a::memcpyNonAliased16((F32*)new_face.mNormals, (F32*)buffer_normals, buf_positions_copied * sizeof(LLVector4a));
+            LLVector4a::memcpyNonAliased16((F32*)new_face.mMikktSpaceTangents, (F32*)buffer_tangents, buf_positions_copied * sizeof(LLVector4a));
 
             U32 tex_size = (buf_positions_copied * sizeof(LLVector2) + 0xF)&~0xF;
             LLVector4a::memcpyNonAliased16((F32*)new_face.mTexCoords, (F32*)buffer_tex_coords, tex_size);
@@ -1832,6 +1842,15 @@ void LLModelPreview::genMeshOptimizerLODs(S32 which_lod, S32 meshopt_mode, U32 d
             mModel[lod][mdl_idx]->setNumVolumeFaces(base->getNumVolumeFaces());
 
             LLModel* target_model = mModel[lod][mdl_idx];
+
+            // carry over normalized transform into simplified model
+            for (int i = 0; i < base->getNumVolumeFaces(); ++i)
+            {
+                LLVolumeFace& src = base->getVolumeFace(i);
+                LLVolumeFace& dst = target_model->getVolumeFace(i);
+                dst.mNormalizedScale = src.mNormalizedScale;
+                dst.mNormalizedTranslation = src.mNormalizedTranslation;
+            }
 
             S32 model_meshopt_mode = meshopt_mode;
 
@@ -2736,7 +2755,6 @@ void LLModelPreview::genBuffers(S32 lod, bool include_skin_weights)
             continue;
         }
 
-        LLModel* base_mdl = *base_iter;
         base_iter++;
 
         S32 num_faces = mdl->getNumVolumeFaces();
@@ -2811,7 +2829,7 @@ void LLModelPreview::genBuffers(S32 lod, bool include_skin_weights)
                     //find closest weight to vf.mVertices[i].mPosition
                     LLVector3 pos(vf.mPositions[i].getF32ptr());
 
-                    const LLModel::weight_list& weight_list = base_mdl->getJointInfluences(pos);
+                    const LLModel::weight_list& weight_list = mdl->getJointInfluences(pos);
                     llassert(weight_list.size()>0 && weight_list.size() <= 4); // LLModel::loadModel() should guarantee this
 
                     LLVector4 w(0, 0, 0, 0);
@@ -2937,6 +2955,20 @@ void LLModelPreview::loadedCallback(
         if (pPreview->mLookUpLodFiles && (lod != LLModel::LOD_HIGH))
         {
             pPreview->lookupLODModelFiles(lod);
+        }
+
+        const LLVOAvatar* avatarp = pPreview->getPreviewAvatar();
+        if (avatarp) { // set up ground plane for possible rendering
+            const LLVector3 root_pos = avatarp->mRoot->getPosition();
+            const LLVector4a* ext = avatarp->mDrawable->getSpatialExtents();
+            const LLVector4a min = ext[0], max = ext[1];
+            const F32 center = (max[2] - min[2]) * 0.5f;
+            const F32 ground = root_pos[2] - center;
+            auto plane = pPreview->mGroundPlane;
+            plane[0] = {min[0], min[1], ground};
+            plane[1] = {max[0], min[1], ground};
+            plane[2] = {max[0], max[1], ground};
+            plane[3] = {min[0], max[1], ground};
         }
     }
 
@@ -3145,6 +3177,9 @@ BOOL LLModelPreview::render()
                     // (note: all these UI updates need to be somewhere that is not render)
                     fmp->childSetValue("upload_skin", true);
                     mFirstSkinUpdate = false;
+                    upload_skin = true;
+                    skin_weight = true;
+                    mViewOption["show_skin_weight"] = true;
                 }
 
                 fmp->enableViewOption("show_skin_weight");
@@ -3749,6 +3784,7 @@ BOOL LLModelPreview::render()
                 {
                     getPreviewAvatar()->renderBones();
                 }
+                renderGroundPlane(mPelvisZOffset);
                 if (shader)
                 {
                     shader->bind();
@@ -3769,6 +3805,28 @@ BOOL LLModelPreview::render()
 
     return TRUE;
 }
+
+void LLModelPreview::renderGroundPlane(float z_offset)
+{   // Not necesarilly general - beware - but it seems to meet the needs of LLModelPreview::render
+
+	gGL.diffuseColor3f( 1.0f, 0.0f, 1.0f );
+
+	gGL.begin(LLRender::LINES);
+	gGL.vertex3fv(mGroundPlane[0].mV);
+	gGL.vertex3fv(mGroundPlane[1].mV);
+
+	gGL.vertex3fv(mGroundPlane[1].mV);
+	gGL.vertex3fv(mGroundPlane[2].mV);
+
+	gGL.vertex3fv(mGroundPlane[2].mV);
+	gGL.vertex3fv(mGroundPlane[3].mV);
+
+	gGL.vertex3fv(mGroundPlane[3].mV);
+	gGL.vertex3fv(mGroundPlane[0].mV);
+
+	gGL.end();
+}
+
 
 //-----------------------------------------------------------------------------
 // refresh()
