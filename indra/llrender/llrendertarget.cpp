@@ -134,7 +134,7 @@ bool LLRenderTarget::allocate(U32 resx, U32 resy, U32 color_fmt, bool depth, boo
 	mUsage = usage;
 	mUseDepth = depth;
 
-	if ((sUseFBO || use_fbo) && gGLManager.mHasFramebufferObject)
+	if ((sUseFBO || use_fbo))
 	{
 		if (depth)
 		{
@@ -234,11 +234,9 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
 		llassert( offset < 4 );
 		return false;
 	}
-	if( offset > 0 && (mFBO == 0 || !gGLManager.mHasDrawBuffers) )
+	if( offset > 0 && (mFBO == 0) )
 	{
-		LL_WARNS() << "FBO not used or no drawbuffers available; mFBO=" << (U32)mFBO << " gGLManager.mHasDrawBuffers=" << (U32)gGLManager.mHasDrawBuffers << LL_ENDL;
 		llassert(  mFBO != 0 );
-		llassert( gGLManager.mHasDrawBuffers );
 		return false;
 	}
 
@@ -303,13 +301,11 @@ bool LLRenderTarget::addColorAttachment(U32 color_fmt)
 	mTex.push_back(tex);
 	mInternalFormat.push_back(color_fmt);
 
-#if !LL_DARWIN
 	if (gDebugGL)
 	{ //bind and unbind to validate target
 		bindTarget();
 		flush();
 	}
-#endif
     
     
 	return true;
@@ -473,6 +469,7 @@ void LLRenderTarget::release()
 
 void LLRenderTarget::bindTarget()
 {
+    LL_PROFILE_GPU_ZONE("bindTarget");
     llassert(mFBO);
 
 	if (mFBO)
@@ -484,14 +481,12 @@ void LLRenderTarget::bindTarget()
 		sCurFBO = mFBO;
 		
 		stop_glerror();
-		if (gGLManager.mHasDrawBuffers)
-		{ //setup multiple render targets
-			GLenum drawbuffers[] = {GL_COLOR_ATTACHMENT0,
-									GL_COLOR_ATTACHMENT1,
-									GL_COLOR_ATTACHMENT2,
-									GL_COLOR_ATTACHMENT3};
-			glDrawBuffers(mTex.size(), drawbuffers);
-		}
+		//setup multiple render targets
+		GLenum drawbuffers[] = {GL_COLOR_ATTACHMENT0,
+								GL_COLOR_ATTACHMENT1,
+								GL_COLOR_ATTACHMENT2,
+								GL_COLOR_ATTACHMENT3};
+		glDrawBuffers(mTex.size(), drawbuffers);
 			
 		if (mTex.empty())
 		{ //no color buffer to draw to
@@ -581,6 +576,7 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
 
 void LLRenderTarget::flush(bool fetch_depth)
 {
+    LL_PROFILE_GPU_ZONE("rt flush");
 	gGL.flush();
     llassert(mFBO);
 	if (!mFBO)

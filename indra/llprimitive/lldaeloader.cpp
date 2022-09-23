@@ -2551,9 +2551,6 @@ bool LLDAELoader::loadModelsFromDomMesh(domMesh* mesh, std::vector<LLModel*>& mo
 	LLVolume::face_list_t remainder;
 	do 
 	{
-        // generate tangents and cache optimize before normalizing
-        ret->preprocessVolumeFaces();
-
 		// Insure we do this once with the whole gang and not per-model
 		//
 		if (!normalized && !mNoNormalize)
@@ -2565,10 +2562,10 @@ bool LLDAELoader::loadModelsFromDomMesh(domMesh* mesh, std::vector<LLModel*>& mo
 		ret->trimVolumeFacesToSize(LL_SCULPT_MESH_MAX_FACES, &remainder);
 
         // remove unused/redundant vertices after normalizing
-		//if (!mNoOptimize)
-		//{
-		//	ret->remapVolumeFaces();
-		//}
+		if (!mNoOptimize)
+		{
+			ret->remapVolumeFaces();
+		}
 
 		volume_faces = remainder.size();
 
@@ -2584,7 +2581,7 @@ bool LLDAELoader::loadModelsFromDomMesh(domMesh* mesh, std::vector<LLModel*>& mo
 			next->mLabel = model_name + (char)((int)'a' + next->mSubmodelID) + lod_suffix[mLod];
 			next->getVolumeFaces() = remainder;
 			next->mNormalizedScale = ret->mNormalizedScale;
-			next->mNormalizedTranslation = ret->mNormalizedTranslation;
+			
 			if ( ret->mMaterialList.size() > LL_SCULPT_MESH_MAX_FACES)
 			{
 				next->mMaterialList.assign(ret->mMaterialList.begin() + LL_SCULPT_MESH_MAX_FACES, ret->mMaterialList.end());

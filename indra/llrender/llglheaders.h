@@ -31,9 +31,7 @@
 //----------------------------------------------------------------------------
 // MESA headers
 // quotes so we get libraries/.../GL/ version
-#define GL_GLEXT_PROTOTYPES
-#define GLX_GLEXT_PROTOTYPES
-
+#define GL_GLEXT_PROTOTYPES 1
 #include "GL/gl.h"
 #include "GL/glext.h"
 #include "GL/glu.h"
@@ -42,49 +40,6 @@
 # define __APPLE__
 # include "GL/glh_extensions.h"
 # undef __APPLE__
-
-#elif LL_LINUX
-//----------------------------------------------------------------------------
-// LL_LINUX
-
-//----------------------------------------------------------------------------
-// Linux, MESA headers, but not necessarily assuming MESA runtime.
-// quotes so we get libraries/.../GL/ version
-
-#define GL_GLEXT_PROTOTYPES
-#define GLX_GLEXT_PROTOTYPES
-
-#include "GL/gl.h"
-#include "GL/glext.h"
-#include "GL/glu.h"
-
-#if LL_LINUX && !LL_MESA_HEADLESS
-
-// The __APPLE__ kludge is to make glh_extensions.h not symbol-clash horribly
-# define __APPLE__
-# include "GL/glh_extensions.h"
-# undef __APPLE__
-
-# include "GL/glx.h"
-# include "GL/glxext.h"
-
-#endif // LL_LINUX && !LL_MESA_HEADLESS
-
-#if LL_LINUX && defined(WINGDIAPI)
-// WINGDIAPI gets set if we are using the linux nvidia gl.h header which needs
-// the functions below setting up.
-# define LL_LINUX_NV_GL_HEADERS 1
-#else
-# define LL_LINUX_NV_GL_HEADERS 0
-#endif // LL_LINUX && defined(WINGDIAPI)
-
-
-#if LL_LINUX_NV_GL_HEADERS
-// Missing functions when using nvidia headers:
-extern PFNGLACTIVETEXTUREPROC	glActiveTexture;
-extern PFNGLCLIENTACTIVETEXTUREPROC	glClientActiveTexture;
-extern PFNGLDRAWRANGEELEMENTSPROC 	glDrawRangeElements;
-#endif // LL_LINUX_NV_GL_HEADERS
 
 #elif LL_WINDOWS
 //----------------------------------------------------------------------------
@@ -118,12 +73,6 @@ extern PFNWGLGETSWAPINTERVALEXTPROC wglGetSwapIntervalEXT;
 
 // WGL_ARB_create_context
 extern PFNWGLCREATECONTEXTATTRIBSARBPROC wglCreateContextAttribsARB;
-
-// GL_VERSION_1_2
-//extern PFNGLDRAWRANGEELEMENTSPROC  glDrawRangeElements;
-//extern PFNGLTEXIMAGE3DPROC         glTexImage3D;
-//extern PFNGLTEXSUBIMAGE3DPROC      glTexSubImage3D;
-//extern PFNGLCOPYTEXSUBIMAGE3DPROC  glCopyTexSubImage3D;
 
 // GL_VERSION_1_3
 extern PFNGLACTIVETEXTUREPROC               glActiveTexture;
@@ -1112,13 +1061,6 @@ extern void glGetBufferPointervARB (GLenum, GLenum, GLvoid* *);
 #endif
 
 #if defined(TRACY_ENABLE) && LL_PROFILER_ENABLE_TRACY_OPENGL
-    // Tracy uses the following:
-    //    glGenQueries
-    //    glGetQueryiv
-    //    glGetQueryObjectiv
-    #define glGenQueries        glGenQueriesARB
-    #define glGetQueryiv        glGetQueryivARB
-    #define glGetQueryObjectiv  glGetQueryObjectivARB
     #include <tracy/TracyOpenGL.hpp>
 #endif
     

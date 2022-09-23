@@ -431,40 +431,8 @@ bool LLFeatureManager::loadGPUClass()
 		LL_WARNS("RenderInit") << "Unable to get an accurate benchmark; defaulting to class 3" << LL_ENDL;
 		mGPUClass = GPU_CLASS_3;
 	#else
-			if (gGLManager.mGLVersion <= 2.f)
-			{
-				mGPUClass = GPU_CLASS_0;
-			}
-			else if (gGLManager.mGLVersion <= 3.f)
-			{
-				mGPUClass = GPU_CLASS_1;
-			}
-			else if (gGLManager.mGLVersion < 3.3f)
-			{
-				mGPUClass = GPU_CLASS_2;
-			}
-			else if (gGLManager.mGLVersion < 4.f)
-			{
-				mGPUClass = GPU_CLASS_3;
-			}
-			else 
-			{
-				mGPUClass = GPU_CLASS_4;
-			}
-			if (gGLManager.mIsIntel && mGPUClass > GPU_CLASS_1)
-			{
-				// Intels are generally weaker then other GPUs despite having advanced features
-				mGPUClass = (EGPUClass)(mGPUClass - 1);
-			}
+			mGPUClass = GPU_CLASS_2;
 	#endif
-		}
-		else if (gGLManager.mGLVersion <= 2.f)
-		{
-			mGPUClass = GPU_CLASS_0;
-		}
-		else if (gGLManager.mGLVersion <= 3.f)
-		{
-			mGPUClass = GPU_CLASS_1;
 		}
 		else if (gbps <= 5.f)
 		{
@@ -679,22 +647,14 @@ void LLFeatureManager::applyBaseMasks()
 	{
 		maskFeatures("TexUnit8orLess");
 	}
-	if (gGLManager.mHasMapBufferRange)
-	{
-		maskFeatures("MapBufferRange");
-	}
 	if (gGLManager.mVRAM > 512)
 	{
 		maskFeatures("VRAMGT512");
 	}
-
-#if LL_DARWIN
-	const LLOSInfo& osInfo = LLOSInfo::instance();
-	if (osInfo.mMajorVer == 10 && osInfo.mMinorVer < 7)
-	{
-		maskFeatures("OSX_10_6_8");
-	}
-#endif
+    if (gGLManager.mGLVersion < 3.99f)
+    {
+        maskFeatures("GL3");
+    }
 
 	// now mask by gpu string
 	// Replaces ' ' with '_' in mGPUString to deal with inability for parser to handle spaces

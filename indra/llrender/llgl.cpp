@@ -86,15 +86,15 @@ void APIENTRY gl_debug_callback(GLenum source,
                                 const GLchar* message,
                                 GLvoid* userParam)
 {
-    /*if (severity != GL_DEBUG_SEVERITY_HIGH_ARB // &&
-        severity != GL_DEBUG_SEVERITY_MEDIUM_ARB &&
-        severity != GL_DEBUG_SEVERITY_LOW_ARB
+    /*if (severity != GL_DEBUG_SEVERITY_HIGH // &&
+        severity != GL_DEBUG_SEVERITY_MEDIUM &&
+        severity != GL_DEBUG_SEVERITY_LOW
         )
     { //suppress out-of-spec messages sent by nvidia driver (mostly vertexbuffer hints)
         return;
     }*/
 
-    if (severity == GL_DEBUG_SEVERITY_HIGH_ARB)
+    if (severity == GL_DEBUG_SEVERITY_HIGH)
     {
         LL_WARNS() << "----- GL ERROR --------" << LL_ENDL;
     }
@@ -107,7 +107,15 @@ void APIENTRY gl_debug_callback(GLenum source,
     LL_WARNS() << "Severity: " << std::hex << severity << LL_ENDL;
     LL_WARNS() << "Message: " << message << LL_ENDL;
     LL_WARNS() << "-----------------------" << LL_ENDL;
-    if (severity == GL_DEBUG_SEVERITY_HIGH_ARB)
+
+    GLint vao = 0;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &vao);
+    GLint vbo = 0;
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &vbo);
+    GLint ibo = 0;
+    glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &ibo);
+
+    if (severity == GL_DEBUG_SEVERITY_HIGH)
     {
         LL_ERRS() << "Halting on GL Error" << LL_ENDL;
     }
@@ -928,44 +936,12 @@ LLGLManager gGLManager;
 LLGLManager::LLGLManager() :
 	mInited(FALSE),
 	mIsDisabled(FALSE),
-
-	mHasMultitexture(FALSE),
-	mHasATIMemInfo(FALSE),
-	mHasAMDAssociations(FALSE),
-	mHasNVXMemInfo(FALSE),
-	mNumTextureUnits(1),
-	mHasMipMapGeneration(FALSE),
-	mHasCompressedTextures(FALSE),
-	mHasFramebufferObject(FALSE),
 	mMaxSamples(0),
-	mHasBlendFuncSeparate(FALSE),
-	mHasSync(FALSE),
-	mHasVertexBufferObject(FALSE),
-	mHasVertexArrayObject(FALSE),
-	mHasMapBufferRange(FALSE),
-	mHasFlushBufferRange(FALSE),
-	mHasPBuffer(FALSE),
-	mNumTextureImageUnits(0),
-	mHasOcclusionQuery(FALSE),
-	mHasTimerQuery(FALSE),
-	mHasOcclusionQuery2(FALSE),
-	mHasPointParameters(FALSE),
-	mHasDrawBuffers(FALSE),
-	mHasTextureRectangle(FALSE),
-	mHasTextureMultisample(FALSE),
-	mHasTransformFeedback(FALSE),
-    mHasUniformBufferObject(FALSE),
+	mNumTextureImageUnits(1),
 	mMaxSampleMaskWords(0),
 	mMaxColorTextureSamples(0),
 	mMaxDepthTextureSamples(0),
 	mMaxIntegerSamples(0),
-
-	mHasAnisotropic(FALSE),
-	mHasARBEnvCombine(FALSE),
-	mHasCubeMap(FALSE),
-	mHasCubeMapArray(FALSE),
-	mHasDebugOutput(FALSE),
-
 	mIsAMD(FALSE),
 	mIsNVIDIA(FALSE),
 	mIsIntel(FALSE),
@@ -973,9 +949,6 @@ LLGLManager::LLGLManager() :
 	mIsMobileGF(FALSE),
 #endif
 	mHasRequirements(TRUE),
-
-	mHasSeparateSpecularColor(FALSE),
-
 	mDriverVersionMajor(1),
 	mDriverVersionMinor(0),
 	mDriverVersionRelease(0),
@@ -993,7 +966,6 @@ LLGLManager::LLGLManager() :
 //---------------------------------------------------------------------
 void LLGLManager::initWGL()
 {
-	mHasPBuffer = FALSE;
 #if LL_WINDOWS && !LL_MESA_HEADLESS
 	if (!glh_init_extensions("WGL_ARB_pixel_format"))
 	{
@@ -1032,10 +1004,6 @@ void LLGLManager::initWGL()
 	{
 		LL_WARNS("RenderInit") << "No ARB WGL render texture extensions" << LL_ENDL;
 	}
-
-	mHasPBuffer = ExtensionExists("WGL_ARB_pbuffer", gGLHExts.mSysExts) &&
-					ExtensionExists("WGL_ARB_render_texture", gGLHExts.mSysExts) &&
-					ExtensionExists("WGL_ARB_pixel_format", gGLHExts.mSysExts);
 #endif
 }
 
@@ -1049,7 +1017,7 @@ bool LLGLManager::initGL()
 
 	stop_glerror();
 
-#if LL_WINDOWS
+#if 0 && LL_WINDOWS
 	if (!glGetStringi)
 	{
 		glGetStringi = (PFNGLGETSTRINGIPROC) GLH_EXT_GET_PROC_ADDRESS("glGetStringi");
@@ -1195,23 +1163,6 @@ bool LLGLManager::initGL()
 	}
 #endif
 
-	if (mHasATIMemInfo && mVRAM == 0)
-	{ //ask the gl how much vram is free at startup and attempt to use no more than half of that
-		S32 meminfo[4];
-		glGetIntegerv(GL_TEXTURE_FREE_MEMORY_ATI, meminfo);
-
-		mVRAM = meminfo[0] / 1024;
-		LL_WARNS("RenderInit") << "VRAM Detected (ATIMemInfo):" << mVRAM << LL_ENDL;
-	}
-
-	if (mHasNVXMemInfo && mVRAM == 0)
-	{
-		S32 dedicated_memory;
-		glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &dedicated_memory);
-		mVRAM = dedicated_memory/1024;
-		LL_WARNS("RenderInit") << "VRAM Detected (NVXMemInfo):" << mVRAM << LL_ENDL;
-	}
-
 #if LL_WINDOWS
 	if (mVRAM < 256)
 	{
@@ -1239,62 +1190,22 @@ bool LLGLManager::initGL()
 
 	stop_glerror();
 
-	GLint num_tex_image_units;
-	glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS_ARB, &num_tex_image_units);
-	mNumTextureImageUnits = llmin(num_tex_image_units, 32);
-
-    if (mHasMultitexture)
+	glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &mNumTextureImageUnits);
+    stop_glerror();
+	glGetIntegerv(GL_MAX_COLOR_TEXTURE_SAMPLES, &mMaxColorTextureSamples);
+    stop_glerror();
+	glGetIntegerv(GL_MAX_DEPTH_TEXTURE_SAMPLES, &mMaxDepthTextureSamples);
+    stop_glerror();
+	glGetIntegerv(GL_MAX_INTEGER_SAMPLES, &mMaxIntegerSamples);
+    stop_glerror();
+	glGetIntegerv(GL_MAX_SAMPLE_MASK_WORDS, &mMaxSampleMaskWords);
+    stop_glerror();
+    glGetIntegerv(GL_MAX_SAMPLES, &mMaxSamples);
+    stop_glerror();
+    if (mGLVersion >= 4.59f)
     {
-        if (LLRender::sGLCoreProfile)
-        {
-            mNumTextureUnits = llmin(mNumTextureImageUnits, MAX_GL_TEXTURE_UNITS);
-        }
-        else
-        {
-            GLint num_tex_units;
-            glGetIntegerv(GL_MAX_TEXTURE_UNITS_ARB, &num_tex_units);
-            mNumTextureUnits = llmin(num_tex_units, (GLint)MAX_GL_TEXTURE_UNITS);
-            if (mIsIntel)
-            {
-                mNumTextureUnits = llmin(mNumTextureUnits, 2);
-            }
-        }
+        glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &mMaxAnisotropy);
     }
-	else
-	{
-		mHasRequirements = FALSE;
-
-		// We don't support cards that don't support the GL_ARB_multitexture extension
-		LL_WARNS("RenderInit") << "GL Drivers do not support GL_ARB_multitexture" << LL_ENDL;
-		return false;
-	}
-	
-	stop_glerror();
-
-	if (mHasTextureMultisample)
-	{
-		glGetIntegerv(GL_MAX_COLOR_TEXTURE_SAMPLES, &mMaxColorTextureSamples);
-		glGetIntegerv(GL_MAX_DEPTH_TEXTURE_SAMPLES, &mMaxDepthTextureSamples);
-		glGetIntegerv(GL_MAX_INTEGER_SAMPLES, &mMaxIntegerSamples);
-		glGetIntegerv(GL_MAX_SAMPLE_MASK_WORDS, &mMaxSampleMaskWords);
-	}
-
-	stop_glerror();
-
-	//HACK always disable texture multisample, use FXAA instead
-	mHasTextureMultisample = FALSE;
-#if LL_WINDOWS
-	if (mIsIntel && mGLVersion <= 3.f)
-	{ //never try to use framebuffer objects on older intel drivers (crashy)
-		mHasFramebufferObject = FALSE;
-	}
-#endif
-
-	if (mHasFramebufferObject)
-	{
-		glGetIntegerv(GL_MAX_SAMPLES, &mMaxSamples);
-	}
-
 	stop_glerror();
 	
 	initGLStates();
@@ -1402,62 +1313,22 @@ void LLGLManager::asLLSD(LLSD& info)
 
 	info["vram"] = mVRAM;
 
-	// Extensions used by everyone
-	info["has_multitexture"] = mHasMultitexture;
-	info["has_ati_mem_info"] = mHasATIMemInfo;
-	info["has_nvx_mem_info"] = mHasNVXMemInfo;
-	info["num_texture_units"] = mNumTextureUnits;
-	info["has_mip_map_generation"] = mHasMipMapGeneration;
-	info["has_compressed_textures"] = mHasCompressedTextures;
-	info["has_framebuffer_object"] = mHasFramebufferObject;
+	// OpenGL limits
 	info["max_samples"] = mMaxSamples;
-	info["has_blend_func_separate"] = mHasBlendFuncSeparate || LLRender::sGLCoreProfile;
-
-	// ARB Extensions
-	info["has_vertex_buffer_object"] = mHasVertexBufferObject;
-	info["has_vertex_array_object"] = mHasVertexArrayObject;
-	info["has_sync"] = mHasSync;
-	info["has_map_buffer_range"] = mHasMapBufferRange;
-	info["has_flush_buffer_range"] = mHasFlushBufferRange;
-	info["has_pbuffer"] = mHasPBuffer;
-    info["has_shader_objects"] = std::string("Assumed TRUE");   // was mHasShaderObjects;
-	info["has_vertex_shader"] = std::string("Assumed TRUE");    // was mHasVertexShader;
-	info["has_fragment_shader"] = std::string("Assumed TRUE");  // was mHasFragmentShader;
 	info["num_texture_image_units"] =  mNumTextureImageUnits;
-	info["has_occlusion_query"] = mHasOcclusionQuery;
-	info["has_timer_query"] = mHasTimerQuery;
-	info["has_occlusion_query2"] = mHasOcclusionQuery2;
-	info["has_point_parameters"] = mHasPointParameters;
-	info["has_draw_buffers"] = mHasDrawBuffers;
-	info["has_depth_clamp"] = mHasDepthClamp;
-	info["has_texture_rectangle"] = mHasTextureRectangle;
-	info["has_texture_multisample"] = mHasTextureMultisample;
-	info["has_transform_feedback"] = mHasTransformFeedback;
 	info["max_sample_mask_words"] = mMaxSampleMaskWords;
 	info["max_color_texture_samples"] = mMaxColorTextureSamples;
 	info["max_depth_texture_samples"] = mMaxDepthTextureSamples;
 	info["max_integer_samples"] = mMaxIntegerSamples;
+    info["max_vertex_range"] = mGLMaxVertexRange;
+    info["max_index_range"] = mGLMaxIndexRange;
+    info["max_texture_size"] = mGLMaxTextureSize;
 
-	// Other extensions.
-	info["has_anisotropic"] = mHasAnisotropic;
-	info["has_arb_env_combine"] = mHasARBEnvCombine;
-	info["has_cube_map"] = mHasCubeMap;
-	info["has_debug_output"] = mHasDebugOutput;
-	info["has_srgb_texture"] = mHassRGBTexture;
-	info["has_srgb_framebuffer"] = mHassRGBFramebuffer;
-    info["has_texture_srgb_decode"] = mHasTexturesRGBDecode;
-
-	// Vendor-specific extensions
+	// Which vendor
 	info["is_ati"] = mIsAMD;  // note, do not rename is_ati to is_amd without coordinating with DW
 	info["is_nvidia"] = mIsNVIDIA;
 	info["is_intel"] = mIsIntel;
 
-	// Other fields
-	info["has_requirements"] = mHasRequirements;
-	info["has_separate_specular_color"] = mHasSeparateSpecularColor;
-	info["max_vertex_range"] = mGLMaxVertexRange;
-	info["max_index_range"] = mGLMaxIndexRange;
-	info["max_texture_size"] = mGLMaxTextureSize;
 	info["gl_renderer"] = mGLRenderer;
 }
 
@@ -1480,60 +1351,6 @@ void LLGLManager::initExtensions()
     glh_init_extensions("");
 #endif
 
-#if LL_MESA_HEADLESS
-# ifdef GL_ARB_multitexture
-	mHasMultitexture = TRUE;
-# else
-	mHasMultitexture = FALSE;
-# endif // GL_ARB_multitexture
-# ifdef GL_ARB_texture_env_combine
-	mHasARBEnvCombine = TRUE;	
-# else
-	mHasARBEnvCombine = FALSE;
-# endif // GL_ARB_texture_env_combine
-# ifdef GL_ARB_texture_compression
-	mHasCompressedTextures = TRUE;
-# else
-	mHasCompressedTextures = FALSE;
-# endif // GL_ARB_texture_compression
-# ifdef GL_ARB_vertex_buffer_object
-	mHasVertexBufferObject = TRUE;
-# else
-	mHasVertexBufferObject = FALSE;
-# endif // GL_ARB_vertex_buffer_object
-# ifdef GL_EXT_framebuffer_object
-	mHasFramebufferObject = TRUE;
-# else
-	mHasFramebufferObject = FALSE;
-# endif // GL_EXT_framebuffer_object
-# ifdef GL_ARB_draw_buffers
-	mHasDrawBuffers = TRUE;
-#else
-	mHasDrawBuffers = FALSE;
-# endif // GL_ARB_draw_buffers
-# if defined(GL_NV_depth_clamp) || defined(GL_ARB_depth_clamp)
-	mHasDepthClamp = TRUE;
-#else
-	mHasDepthClamp = FALSE;
-#endif // defined(GL_NV_depth_clamp) || defined(GL_ARB_depth_clamp)
-# if GL_EXT_blend_func_separate
-	mHasBlendFuncSeparate = TRUE;
-#else
-	mHasBlendFuncSeparate = FALSE;
-# endif // GL_EXT_blend_func_separate
-	mHasMipMapGeneration = FALSE;
-	mHasSeparateSpecularColor = FALSE;
-	mHasAnisotropic = FALSE;
-	mHasCubeMap = FALSE;
-	mHasOcclusionQuery = FALSE;
-	mHasPointParameters = FALSE;
-	mHasTextureRectangle = FALSE;
-#else // LL_MESA_HEADLESS //important, gGLHExts.mSysExts is uninitialized until after glh_init_extensions is called
-
-    mHasMultitexture = TRUE;
-    mHasCubeMap = TRUE;
-    mHasCompressedTextures = TRUE;
-
 #if LL_DARWIN
     GLint num_extensions = 0;
     std::string all_extensions{""};
@@ -1550,178 +1367,21 @@ void LLGLManager::initExtensions()
     }
 #endif
 
-    mHasSeparateSpecularColor = ExtensionExists("GL_EXT_separate_specular_color", gGLHExts.mSysExts);
-    mHasAnisotropic = ExtensionExists("GL_EXT_texture_filter_anisotropic", gGLHExts.mSysExts);
-
-    // In core profile
-    mHasARBEnvCombine = TRUE; //ExtensionExists("GL_ARB_texture_env_combine", gGLHExts.mSysExts);
-    mHasTimerQuery = FALSE; //FIXME //ExtensionExists("GL_ARB_timer_query", gGLHExts.mSysExts);
-    mHasOcclusionQuery = TRUE; //ExtensionExists("GL_ARB_occlusion_query", gGLHExts.mSysExts);
-    mHasOcclusionQuery2 = TRUE; // ExtensionExists("GL_ARB_occlusion_query2", gGLHExts.mSysExts);
-    mHasVertexBufferObject = TRUE; //ExtensionExists("GL_ARB_vertex_buffer_object", gGLHExts.mSysExts);
-    mHasVertexArrayObject = TRUE; //ExtensionExists("GL_ARB_vertex_array_object", gGLHExts.mSysExts);
-    mHasMapBufferRange = TRUE; ExtensionExists("GL_ARB_map_buffer_range", gGLHExts.mSysExts);
-    mHasFlushBufferRange = ExtensionExists("GL_APPLE_flush_buffer_range", gGLHExts.mSysExts); // Apple has mHasMapBufferRange now
-    mHasSync = TRUE; //ExtensionExists("GL_ARB_sync", gGLHExts.mSysExts);
-    mHasFramebufferObject = TRUE; //ExtensionExists("GL_ARB_framebuffer_object", gGLHExts.mSysExts);
-    mHassRGBFramebuffer = TRUE; //ExtensionExists("GL_ARB_framebuffer_sRGB", gGLHExts.mSysExts);
-    mHasDrawBuffers = TRUE; //ExtensionExists("GL_ARB_draw_buffers", gGLHExts.mSysExts);
-    mHasTextureRectangle = TRUE; //ExtensionExists("GL_ARB_texture_rectangle", gGLHExts.mSysExts);
-    mHasTextureMultisample = TRUE; //ExtensionExists("GL_ARB_texture_multisample", gGLHExts.mSysExts);
-    mHasUniformBufferObject = TRUE; //ExtensionExists("GL_ARB_uniform_buffer_object", gGLHExts.mSysExts);
-    mHasCubeMapArray = TRUE; //ExtensionExists("GL_ARB_texture_cube_map_array", gGLHExts.mSysExts);
-    mHasPointParameters = TRUE; //ExtensionExists("GL_ARB_point_parameters", gGLHExts.mSysExts);
-
-    mHasATIMemInfo = ExtensionExists("GL_ATI_meminfo", gGLHExts.mSysExts); //Basic AMD method, also see mHasAMDAssociations
-    mHasNVXMemInfo = ExtensionExists("GL_NVX_gpu_memory_info", gGLHExts.mSysExts);
-    // NOTE: Using extensions breaks reflections when Shadows are set to projector.  See: SL-16727
-    //mHasDepthClamp = ExtensionExists("GL_ARB_depth_clamp", gGLHExts.mSysExts) || ExtensionExists("GL_NV_depth_clamp", gGLHExts.mSysExts);
-    mHasDepthClamp = FALSE;
-    // mask out FBO support when packed_depth_stencil isn't there 'cause we need it for LLRenderTarget -Brad
-
-#ifdef GL_EXT_texture_sRGB
-    mHassRGBTexture = ExtensionExists("GL_EXT_texture_sRGB", gGLHExts.mSysExts);
-#endif
+    // NOTE: version checks against mGLVersion should bias down by 0.01 because of F32 errors
     
-    
-#ifdef GL_EXT_texture_sRGB_decode
-    mHasTexturesRGBDecode = ExtensionExists("GL_EXT_texture_sRGB_decode", gGLHExts.mSysExts);
-#else
-    mHasTexturesRGBDecode = ExtensionExists("GL_ARB_texture_sRGB_decode", gGLHExts.mSysExts);
-#endif
+    // OpenGL 4.x capabilities
+    mHasCubeMapArray = mGLVersion >= 3.99f; 
+    mHasTransformFeedback = mGLVersion >= 3.99f;
+    mHasDebugOutput = mGLVersion >= 4.29f;
 
-    mHasMipMapGeneration = mHasFramebufferObject || mGLVersion >= 1.4f;
-
-    mHasBlendFuncSeparate = ExtensionExists("GL_EXT_blend_func_separate", gGLHExts.mSysExts);
-    mHasDebugOutput = mGLVersion >= 4.3f ? TRUE : FALSE;
-    mHasTransformFeedback = mGLVersion >= 4.f ? TRUE : FALSE;
-#endif
-
-#if LL_LINUX
-	LL_INFOS() << "initExtensions() checking shell variables to adjust features..." << LL_ENDL;
-	// Our extension support for the Linux Client is very young with some
-	// potential driver gotchas, so offer a semi-secret way to turn it off.
-	if (getenv("LL_GL_NOEXT"))
-	{
-		//mHasMultitexture = FALSE; // NEEDED!
-		mHasDepthClamp = FALSE;
-		mHasARBEnvCombine = FALSE;
-		mHasCompressedTextures = FALSE;
-		mHasVertexBufferObject = FALSE;
-		mHasFramebufferObject = FALSE;
-		mHasDrawBuffers = FALSE;
-		mHasBlendFuncSeparate = FALSE;
-		mHasMipMapGeneration = FALSE;
-		mHasSeparateSpecularColor = FALSE;
-		mHasAnisotropic = FALSE;
-		mHasCubeMap = FALSE;
-		mHasOcclusionQuery = FALSE;
-		mHasPointParameters = FALSE;
-		LL_WARNS("RenderInit") << "GL extension support DISABLED via LL_GL_NOEXT" << LL_ENDL;
-	}
-	else if (getenv("LL_GL_BASICEXT"))	/* Flawfinder: ignore */
-	{
-		// This switch attempts to turn off all support for exotic
-		// extensions which I believe correspond to fatal driver
-		// bug reports.  This should be the default until we get a
-		// proper blacklist/whitelist on Linux.
-		mHasMipMapGeneration = FALSE;
-		mHasAnisotropic = FALSE;
-		//mHasCubeMap = FALSE; // apparently fatal on Intel 915 & similar
-		//mHasOcclusionQuery = FALSE; // source of many ATI system hangs
-		mHasBlendFuncSeparate = FALSE;
-		LL_WARNS("RenderInit") << "GL extension support forced to SIMPLE level via LL_GL_BASICEXT" << LL_ENDL;
-	}
-	if (getenv("LL_GL_BLACKLIST"))	/* Flawfinder: ignore */
-	{
-		// This lets advanced troubleshooters disable specific
-		// GL extensions to isolate problems with their hardware.
-		// SL-28126
-		const char *const blacklist = getenv("LL_GL_BLACKLIST");	/* Flawfinder: ignore */
-		LL_WARNS("RenderInit") << "GL extension support partially disabled via LL_GL_BLACKLIST: " << blacklist << LL_ENDL;
-		if (strchr(blacklist,'a')) mHasARBEnvCombine = FALSE;
-		if (strchr(blacklist,'b')) mHasCompressedTextures = FALSE;
-		if (strchr(blacklist,'c')) mHasVertexBufferObject = FALSE;
-		if (strchr(blacklist,'d')) mHasMipMapGeneration = FALSE;//S
-// 		if (strchr(blacklist,'f')) mHasNVVertexArrayRange = FALSE;//S
-// 		if (strchr(blacklist,'g')) mHasNVFence = FALSE;//S
-		if (strchr(blacklist,'h')) mHasSeparateSpecularColor = FALSE;
-		if (strchr(blacklist,'i')) mHasAnisotropic = FALSE;//S
-		if (strchr(blacklist,'j')) mHasCubeMap = FALSE;//S
-// 		if (strchr(blacklist,'k')) mHasATIVAO = FALSE;//S
-		if (strchr(blacklist,'l')) mHasOcclusionQuery = FALSE;
-		if (strchr(blacklist,'p')) mHasPointParameters = FALSE;//S
-		if (strchr(blacklist,'q')) mHasFramebufferObject = FALSE;//S
-		if (strchr(blacklist,'r')) mHasDrawBuffers = FALSE;//S
-		if (strchr(blacklist,'s')) mHasTextureRectangle = FALSE;
-		if (strchr(blacklist,'t')) mHasBlendFuncSeparate = FALSE;//S
-		if (strchr(blacklist,'u')) mHasDepthClamp = FALSE;
-		
-	}
-#endif // LL_LINUX
-	
-	if (!mHasMultitexture)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize multitexturing" << LL_ENDL;
-	}
-	if (!mHasMipMapGeneration)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize mipmap generation" << LL_ENDL;
-	}
-	if (!mHasARBEnvCombine)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_texture_env_combine" << LL_ENDL;
-	}
-	if (!mHasSeparateSpecularColor)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize separate specular color" << LL_ENDL;
-	}
-	if (!mHasAnisotropic)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize anisotropic filtering" << LL_ENDL;
-	}
-	if (!mHasCompressedTextures)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_texture_compression" << LL_ENDL;
-	}
-	if (!mHasOcclusionQuery)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_occlusion_query" << LL_ENDL;
-	}
-	if (!mHasOcclusionQuery2)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_occlusion_query2" << LL_ENDL;
-	}
-	if (!mHasPointParameters)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_point_parameters" << LL_ENDL;
-	}
-	if (!mHasBlendFuncSeparate && !LLRender::sGLCoreProfile)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_EXT_blend_func_separate" << LL_ENDL;
-	}
-	if (!mHasDrawBuffers)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_draw_buffers" << LL_ENDL;
-	}
-	if (!mHasCubeMapArray)
-	{
-		LL_INFOS("RenderInit") << "Couldn't initialize GL_ARB_texture_cube_map_array" << LL_ENDL;
-	}
-
-	// Disable certain things due to known bugs
-	if (mIsIntel && mHasMipMapGeneration)
-	{
-		LL_INFOS("RenderInit") << "Disabling mip-map generation for Intel GPUs" << LL_ENDL;
-		mHasMipMapGeneration = FALSE;
-	}
-
-	// Misc
+    // Misc
 	glGetIntegerv(GL_MAX_ELEMENTS_VERTICES, (GLint*) &mGLMaxVertexRange);
 	glGetIntegerv(GL_MAX_ELEMENTS_INDICES, (GLint*) &mGLMaxIndexRange);
 	glGetIntegerv(GL_MAX_TEXTURE_SIZE, (GLint*) &mGLMaxTextureSize);
 
-#if LL_WINDOWS
+    mInited = TRUE;
+
+#if (LL_WINDOWS
 	LL_DEBUGS("RenderInit") << "GL Probe: Getting symbols" << LL_ENDL;
 	
     // WGL_AMD_gpu_association
@@ -1741,8 +1401,16 @@ void LLGLManager::initExtensions()
 
     // WGL_ARB_create_context
     wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)GLH_EXT_GET_PROC_ADDRESS("wglCreateContextAttribsARB");
+#endif
+
+
+    // Load entire OpenGL API through GetProcAddress, leaving sections beyond mGLVersion unloaded
 
     // GL_VERSION_1_2
+    if (mGLVersion < 1.19f)
+    {
+        return;
+    }
     glDrawRangeElements = (PFNGLDRAWRANGEELEMENTSPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawRangeElements");
     glTexImage3D = (PFNGLTEXIMAGE3DPROC)GLH_EXT_GET_PROC_ADDRESS("glTexImage3D");
     glTexSubImage3D = (PFNGLTEXSUBIMAGE3DPROC)GLH_EXT_GET_PROC_ADDRESS("glTexSubImage3D");
@@ -1750,6 +1418,10 @@ void LLGLManager::initExtensions()
 
 
     // GL_VERSION_1_3
+    if (mGLVersion < 1.29f)
+    {
+        return;
+    }
     glActiveTexture = (PFNGLACTIVETEXTUREPROC)GLH_EXT_GET_PROC_ADDRESS("glActiveTexture");
     glSampleCoverage = (PFNGLSAMPLECOVERAGEPROC)GLH_EXT_GET_PROC_ADDRESS("glSampleCoverage");
     glCompressedTexImage3D = (PFNGLCOMPRESSEDTEXIMAGE3DPROC)GLH_EXT_GET_PROC_ADDRESS("glCompressedTexImage3D");
@@ -1798,6 +1470,10 @@ void LLGLManager::initExtensions()
     glMultTransposeMatrixd = (PFNGLMULTTRANSPOSEMATRIXDPROC)GLH_EXT_GET_PROC_ADDRESS("glMultTransposeMatrixd");
 
     // GL_VERSION_1_4
+    if (mGLVersion < 1.39f)
+    {
+        return;
+    }
     glBlendFuncSeparate = (PFNGLBLENDFUNCSEPARATEPROC)GLH_EXT_GET_PROC_ADDRESS("glBlendFuncSeparate");
     glMultiDrawArrays = (PFNGLMULTIDRAWARRAYSPROC)GLH_EXT_GET_PROC_ADDRESS("glMultiDrawArrays");
     glMultiDrawElements = (PFNGLMULTIDRAWELEMENTSPROC)GLH_EXT_GET_PROC_ADDRESS("glMultiDrawElements");
@@ -1845,6 +1521,10 @@ void LLGLManager::initExtensions()
     glWindowPos3sv = (PFNGLWINDOWPOS3SVPROC)GLH_EXT_GET_PROC_ADDRESS("glWindowPos3sv");
 
     // GL_VERSION_1_5
+    if (mGLVersion < 1.49f)
+    {
+        return;
+    }
     glGenQueries = (PFNGLGENQUERIESPROC)GLH_EXT_GET_PROC_ADDRESS("glGenQueries");
     glDeleteQueries = (PFNGLDELETEQUERIESPROC)GLH_EXT_GET_PROC_ADDRESS("glDeleteQueries");
     glIsQuery = (PFNGLISQUERYPROC)GLH_EXT_GET_PROC_ADDRESS("glIsQuery");
@@ -1866,6 +1546,10 @@ void LLGLManager::initExtensions()
     glGetBufferPointerv = (PFNGLGETBUFFERPOINTERVPROC)GLH_EXT_GET_PROC_ADDRESS("glGetBufferPointerv");
 
     // GL_VERSION_2_0
+    if (mGLVersion < 1.9f)
+    {
+        return;
+    }
     glBlendEquationSeparate = (PFNGLBLENDEQUATIONSEPARATEPROC)GLH_EXT_GET_PROC_ADDRESS("glBlendEquationSeparate");
     glDrawBuffers = (PFNGLDRAWBUFFERSPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawBuffers");
     glStencilOpSeparate = (PFNGLSTENCILOPSEPARATEPROC)GLH_EXT_GET_PROC_ADDRESS("glStencilOpSeparate");
@@ -1961,6 +1645,10 @@ void LLGLManager::initExtensions()
     glVertexAttribPointer = (PFNGLVERTEXATTRIBPOINTERPROC)GLH_EXT_GET_PROC_ADDRESS("glVertexAttribPointer");
 
     // GL_VERSION_2_1
+    if (mGLVersion < 2.09f)
+    {
+        return;
+    }
     glUniformMatrix2x3fv = (PFNGLUNIFORMMATRIX2X3FVPROC)GLH_EXT_GET_PROC_ADDRESS("glUniformMatrix2x3fv");
     glUniformMatrix3x2fv = (PFNGLUNIFORMMATRIX3X2FVPROC)GLH_EXT_GET_PROC_ADDRESS("glUniformMatrix3x2fv");
     glUniformMatrix2x4fv = (PFNGLUNIFORMMATRIX2X4FVPROC)GLH_EXT_GET_PROC_ADDRESS("glUniformMatrix2x4fv");
@@ -1969,6 +1657,10 @@ void LLGLManager::initExtensions()
     glUniformMatrix4x3fv = (PFNGLUNIFORMMATRIX4X3FVPROC)GLH_EXT_GET_PROC_ADDRESS("glUniformMatrix4x3fv");
 
     // GL_VERSION_3_0
+    if (mGLVersion < 2.99f)
+    {
+        return;
+    }
     glColorMaski = (PFNGLCOLORMASKIPROC)GLH_EXT_GET_PROC_ADDRESS("glColorMaski");
     glGetBooleani_v = (PFNGLGETBOOLEANI_VPROC)GLH_EXT_GET_PROC_ADDRESS("glGetBooleani_v");
     glGetIntegeri_v = (PFNGLGETINTEGERI_VPROC)GLH_EXT_GET_PROC_ADDRESS("glGetIntegeri_v");
@@ -2055,6 +1747,10 @@ void LLGLManager::initExtensions()
     glIsVertexArray = (PFNGLISVERTEXARRAYPROC)GLH_EXT_GET_PROC_ADDRESS("glIsVertexArray");
 
     // GL_VERSION_3_1
+    if (mGLVersion < 3.09f)
+    {
+        return;
+    }
     glDrawArraysInstanced = (PFNGLDRAWARRAYSINSTANCEDPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawArraysInstanced");
     glDrawElementsInstanced = (PFNGLDRAWELEMENTSINSTANCEDPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawElementsInstanced");
     glTexBuffer = (PFNGLTEXBUFFERPROC)GLH_EXT_GET_PROC_ADDRESS("glTexBuffer");
@@ -2069,6 +1765,10 @@ void LLGLManager::initExtensions()
     glUniformBlockBinding = (PFNGLUNIFORMBLOCKBINDINGPROC)GLH_EXT_GET_PROC_ADDRESS("glUniformBlockBinding");
 
     // GL_VERSION_3_2
+    if (mGLVersion < 3.19f)
+    {
+        return;
+    }
     glDrawElementsBaseVertex = (PFNGLDRAWELEMENTSBASEVERTEXPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawElementsBaseVertex");
     glDrawRangeElementsBaseVertex = (PFNGLDRAWRANGEELEMENTSBASEVERTEXPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawRangeElementsBaseVertex");
     glDrawElementsInstancedBaseVertex = (PFNGLDRAWELEMENTSINSTANCEDBASEVERTEXPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawElementsInstancedBaseVertex");
@@ -2090,6 +1790,10 @@ void LLGLManager::initExtensions()
     glSampleMaski = (PFNGLSAMPLEMASKIPROC)GLH_EXT_GET_PROC_ADDRESS("glSampleMaski");
 
     // GL_VERSION_3_3
+    if (mGLVersion < 3.29f)
+    {
+        return;
+    }
     glBindFragDataLocationIndexed = (PFNGLBINDFRAGDATALOCATIONINDEXEDPROC)GLH_EXT_GET_PROC_ADDRESS("glBindFragDataLocationIndexed");
     glGetFragDataIndex = (PFNGLGETFRAGDATAINDEXPROC)GLH_EXT_GET_PROC_ADDRESS("glGetFragDataIndex");
     glGenSamplers = (PFNGLGENSAMPLERSPROC)GLH_EXT_GET_PROC_ADDRESS("glGenSamplers");
@@ -2150,6 +1854,10 @@ void LLGLManager::initExtensions()
     glSecondaryColorP3uiv = (PFNGLSECONDARYCOLORP3UIVPROC)GLH_EXT_GET_PROC_ADDRESS("glSecondaryColorP3uiv");
 
     // GL_VERSION_4_0
+    if (mGLVersion < 3.99f)
+    {
+        return;
+    }
     glMinSampleShading = (PFNGLMINSAMPLESHADINGPROC)GLH_EXT_GET_PROC_ADDRESS("glMinSampleShading");
     glBlendEquationi = (PFNGLBLENDEQUATIONIPROC)GLH_EXT_GET_PROC_ADDRESS("glBlendEquationi");
     glBlendEquationSeparatei = (PFNGLBLENDEQUATIONSEPARATEIPROC)GLH_EXT_GET_PROC_ADDRESS("glBlendEquationSeparatei");
@@ -2198,6 +1906,10 @@ void LLGLManager::initExtensions()
     glGetQueryIndexediv = (PFNGLGETQUERYINDEXEDIVPROC)GLH_EXT_GET_PROC_ADDRESS("glGetQueryIndexediv");
 
     // GL_VERSION_4_1
+    if (mGLVersion < 4.09f)
+    {
+        return;
+    }
     glReleaseShaderCompiler = (PFNGLRELEASESHADERCOMPILERPROC)GLH_EXT_GET_PROC_ADDRESS("glReleaseShaderCompiler");
     glShaderBinary = (PFNGLSHADERBINARYPROC)GLH_EXT_GET_PROC_ADDRESS("glShaderBinary");
     glGetShaderPrecisionFormat = (PFNGLGETSHADERPRECISIONFORMATPROC)GLH_EXT_GET_PROC_ADDRESS("glGetShaderPrecisionFormat");
@@ -2288,6 +2000,10 @@ void LLGLManager::initExtensions()
     glGetDoublei_v = (PFNGLGETDOUBLEI_VPROC)GLH_EXT_GET_PROC_ADDRESS("glGetDoublei_v");
 
     // GL_VERSION_4_2
+    if (mGLVersion < 4.19f)
+    {
+        return;
+    }
     glDrawArraysInstancedBaseInstance = (PFNGLDRAWARRAYSINSTANCEDBASEINSTANCEPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawArraysInstancedBaseInstance");
     glDrawElementsInstancedBaseInstance = (PFNGLDRAWELEMENTSINSTANCEDBASEINSTANCEPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawElementsInstancedBaseInstance");
     glDrawElementsInstancedBaseVertexBaseInstance = (PFNGLDRAWELEMENTSINSTANCEDBASEVERTEXBASEINSTANCEPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawElementsInstancedBaseVertexBaseInstance");
@@ -2302,6 +2018,10 @@ void LLGLManager::initExtensions()
     glDrawTransformFeedbackStreamInstanced = (PFNGLDRAWTRANSFORMFEEDBACKSTREAMINSTANCEDPROC)GLH_EXT_GET_PROC_ADDRESS("glDrawTransformFeedbackStreamInstanced");
 
     // GL_VERSION_4_3
+    if (mGLVersion < 4.29f)
+    {
+        return;
+    }
     glClearBufferData = (PFNGLCLEARBUFFERDATAPROC)GLH_EXT_GET_PROC_ADDRESS("glClearBufferData");
     glClearBufferSubData = (PFNGLCLEARBUFFERSUBDATAPROC)GLH_EXT_GET_PROC_ADDRESS("glClearBufferSubData");
     glDispatchCompute = (PFNGLDISPATCHCOMPUTEPROC)GLH_EXT_GET_PROC_ADDRESS("glDispatchCompute");
@@ -2347,6 +2067,10 @@ void LLGLManager::initExtensions()
     glGetObjectPtrLabel = (PFNGLGETOBJECTPTRLABELPROC)GLH_EXT_GET_PROC_ADDRESS("glGetObjectPtrLabel");
 
     // GL_VERSION_4_4
+    if (mGLVersion < 4.39f)
+    {
+        return;
+    }
     glBufferStorage = (PFNGLBUFFERSTORAGEPROC)GLH_EXT_GET_PROC_ADDRESS("glBufferStorage");
     glClearTexImage = (PFNGLCLEARTEXIMAGEPROC)GLH_EXT_GET_PROC_ADDRESS("glClearTexImage");
     glClearTexSubImage = (PFNGLCLEARTEXSUBIMAGEPROC)GLH_EXT_GET_PROC_ADDRESS("glClearTexSubImage");
@@ -2358,6 +2082,10 @@ void LLGLManager::initExtensions()
     glBindVertexBuffers = (PFNGLBINDVERTEXBUFFERSPROC)GLH_EXT_GET_PROC_ADDRESS("glBindVertexBuffers");
 
     // GL_VERSION_4_5
+    if (mGLVersion < 4.49f)
+    {
+        return;
+    }
     glClipControl = (PFNGLCLIPCONTROLPROC)GLH_EXT_GET_PROC_ADDRESS("glClipControl");
     glCreateTransformFeedbacks = (PFNGLCREATETRANSFORMFEEDBACKSPROC)GLH_EXT_GET_PROC_ADDRESS("glCreateTransformFeedbacks");
     glTransformFeedbackBufferBase = (PFNGLTRANSFORMFEEDBACKBUFFERBASEPROC)GLH_EXT_GET_PROC_ADDRESS("glTransformFeedbackBufferBase");
@@ -2482,15 +2210,16 @@ void LLGLManager::initExtensions()
     glTextureBarrier = (PFNGLTEXTUREBARRIERPROC)GLH_EXT_GET_PROC_ADDRESS("glTextureBarrier");
 
     // GL_VERSION_4_6
+    if (mGLVersion < 4.59f)
+    {
+        return;
+    }
     glSpecializeShader = (PFNGLSPECIALIZESHADERPROC)GLH_EXT_GET_PROC_ADDRESS("glSpecializeShader");
     glMultiDrawArraysIndirectCount = (PFNGLMULTIDRAWARRAYSINDIRECTCOUNTPROC)GLH_EXT_GET_PROC_ADDRESS("glMultiDrawArraysIndirectCount");
     glMultiDrawElementsIndirectCount = (PFNGLMULTIDRAWELEMENTSINDIRECTCOUNTPROC)GLH_EXT_GET_PROC_ADDRESS("glMultiDrawElementsIndirectCount");
     glPolygonOffsetClamp = (PFNGLPOLYGONOFFSETCLAMPPROC)GLH_EXT_GET_PROC_ADDRESS("glPolygonOffsetClamp");
     
-    LL_DEBUGS("RenderInit") << "GL Probe: Got symbols" << LL_ENDL;
 #endif
-
-    mInited = TRUE;
 }
 
 void rotate_quat(LLQuaternion& rotation)
@@ -2793,7 +2522,7 @@ void LLGLState::checkTextureChannels(const std::string& msg)
 	glh::matrix4f identity;
 	identity.identity();
 
-	for (GLint i = 1; i < gGLManager.mNumTextureUnits; i++)
+	for (GLint i = 1; i < gGLManager.mNumTextureImageUnits; i++)
 	{
 		gGL.getTexUnit(i)->activate();
 
@@ -2831,12 +2560,6 @@ void LLGLState::checkTextureChannels(const std::string& msg)
 			for (S32 j = (i == 0 ? 1 : 0); 
 				j < 9; j++)
 			{
-				if (j == 8 && !gGLManager.mHasTextureRectangle ||
-					j == 9 && !gGLManager.mHasTextureMultisample)
-				{
-					continue;
-				}
-				
 				if (glIsEnabled(value[j]))
 				{
 					error = TRUE;
@@ -3327,36 +3050,29 @@ LLGLSquashToFarClip::~LLGLSquashToFarClip()
 	
 LLGLSyncFence::LLGLSyncFence()
 {
-#ifdef GL_ARB_sync
 	mSync = 0;
-#endif
 }
 
 LLGLSyncFence::~LLGLSyncFence()
 {
-#ifdef GL_ARB_sync
 	if (mSync)
 	{
 		glDeleteSync(mSync);
 	}
-#endif
 }
 
 void LLGLSyncFence::placeFence()
 {
-#ifdef GL_ARB_sync
 	if (mSync)
 	{
 		glDeleteSync(mSync);
 	}
 	mSync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
-#endif
 }
 
 bool LLGLSyncFence::isCompleted()
 {
 	bool ret = true;
-#ifdef GL_ARB_sync
 	if (mSync)
 	{
 		GLenum status = glClientWaitSync(mSync, 0, 1);
@@ -3365,13 +3081,11 @@ bool LLGLSyncFence::isCompleted()
 			ret = false;
 		}
 	}
-#endif
 	return ret;
 }
 
 void LLGLSyncFence::wait()
 {
-#ifdef GL_ARB_sync
 	if (mSync)
 	{
 		while (glClientWaitSync(mSync, 0, FENCE_WAIT_TIME_NANOSECONDS) == GL_TIMEOUT_EXPIRED)
@@ -3380,7 +3094,6 @@ void LLGLSyncFence::wait()
 			waits++;
 		}
 	}
-#endif
 }
 
 LLGLSPipelineSkyBox::LLGLSPipelineSkyBox()

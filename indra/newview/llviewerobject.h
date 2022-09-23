@@ -184,7 +184,8 @@ public:
     void setHasRenderMaterialParams(bool has_params);
 
     const LLUUID& getRenderMaterialID(U8 te) const;
-    void setRenderMaterialID(U8 te, const LLUUID& id);
+    void setRenderMaterialID(U8 te, const LLUUID& id, bool update_server = true);
+    void setRenderMaterialIDs(const LLUUID& id);
 
 	virtual BOOL	isHUDAttachment() const { return FALSE; }
 	virtual BOOL	isTempAttachment() const;
@@ -219,6 +220,7 @@ public:
 	F32					getRotTime() { return mRotTime; }
 private:
 	void				resetRotTime();
+    void				setRenderMaterialIDs(const LLRenderMaterialParams* material_params, bool local_origin);
 public:
 	void				resetRot();
 	void				applyAngularVelocity(F32 dt);
@@ -369,7 +371,7 @@ public:
 	LLViewerTexture		*getTENormalMap(const U8 te) const;
 	LLViewerTexture		*getTESpecularMap(const U8 te) const;
 
-    LLViewerTexture* getGLTFAlbedoMap(U8 te) const { return mGLTFAlbedoMaps[te]; }
+    LLViewerTexture* getGLTFBaseColorMap(U8 te) const { return mGLTFBaseColorMaps[te]; }
     LLViewerTexture* getGLTFNormalMap(U8 te) const { return mGLTFNormalMaps[te]; }
     LLViewerTexture* getGLTFEmissiveMap(U8 te) const { return mGLTFEmissiveMaps[te]; }
     LLViewerTexture* getGLTFMetallicRoughnessMap(U8 te) const { return mGLTFMetallicRoughnessMaps[te]; }
@@ -691,7 +693,7 @@ public:
 	LLPointer<LLViewerTexture> *mTENormalMaps;
 	LLPointer<LLViewerTexture> *mTESpecularMaps;
     
-    std::vector<LLPointer<LLViewerTexture> > mGLTFAlbedoMaps;
+    std::vector<LLPointer<LLViewerTexture> > mGLTFBaseColorMaps;
     std::vector<LLPointer<LLViewerTexture> > mGLTFNormalMaps;
     std::vector<LLPointer<LLViewerTexture> > mGLTFMetallicRoughnessMaps;
     std::vector<LLPointer<LLViewerTexture> > mGLTFEmissiveMaps;
