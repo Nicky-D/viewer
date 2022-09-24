@@ -31,17 +31,6 @@
 //----------------------------------------------------------------------------
 // MESA headers
 // quotes so we get libraries/.../GL/ version
-#define GL_GLEXT_PROTOTYPES 1
-#include "GL/gl.h"
-#include "GL/glext.h"
-#include "GL/glu.h"
-
-// The __APPLE__ kludge is to make glh_extensions.h not symbol-clash horribly
-# define __APPLE__
-# include "GL/glh_extensions.h"
-# undef __APPLE__
-
-#elif LL_LINUX
 #define GL_GLEXT_PROTOTYPES
 #define GLX_GLEXT_PROTOTYPES
 
@@ -54,10 +43,33 @@
 # include "GL/glh_extensions.h"
 # undef __APPLE__
 
-# include "GL/glx.h"
-# include "GL/glxext.h"
+<<<<<<< HEAD
+#elif LL_LINUX
+//----------------------------------------------------------------------------
+// LL_LINUX
+
+//----------------------------------------------------------------------------
+// Linux, MESA headers, but not necessarily assuming MESA runtime.
+// quotes so we get libraries/.../GL/ version
+
+#if LL_LINUX && defined(WINGDIAPI)
+// WINGDIAPI gets set if we are using the linux nvidia gl.h header which needs
+// the functions below setting up.
+# define LL_LINUX_NV_GL_HEADERS 1
+#else
+# define LL_LINUX_NV_GL_HEADERS 0
+#endif // LL_LINUX && defined(WINGDIAPI)
 
 
+#if LL_LINUX_NV_GL_HEADERS
+// Missing functions when using nvidia headers:
+extern PFNGLACTIVETEXTUREPROC	glActiveTexture;
+extern PFNGLCLIENTACTIVETEXTUREPROC	glClientActiveTexture;
+extern PFNGLDRAWRANGEELEMENTSPROC 	glDrawRangeElements;
+#endif // LL_LINUX_NV_GL_HEADERS
+
+=======
+>>>>>>> ll/DRTVWR-559
 #elif LL_WINDOWS
 //----------------------------------------------------------------------------
 // LL_WINDOWS

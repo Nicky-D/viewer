@@ -1381,7 +1381,7 @@ void LLGLManager::initExtensions()
 
     mInited = TRUE;
 
-#if (LL_WINDOWS
+#if LL_WINDOWS
 	LL_DEBUGS("RenderInit") << "GL Probe: Getting symbols" << LL_ENDL;
 	
     // WGL_AMD_gpu_association
@@ -1401,8 +1401,6 @@ void LLGLManager::initExtensions()
 
     // WGL_ARB_create_context
     wglCreateContextAttribsARB = (PFNWGLCREATECONTEXTATTRIBSARBPROC)GLH_EXT_GET_PROC_ADDRESS("wglCreateContextAttribsARB");
-#endif
-
 
     // Load entire OpenGL API through GetProcAddress, leaving sections beyond mGLVersion unloaded
 
