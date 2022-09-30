@@ -4412,6 +4412,8 @@ void LLPipeline::renderGeom(LLCamera& camera, bool forceVBOUpdate)
 	}
 
 	{
+        bool occlude = sUseOcclusion > 1;
+#if 1 // DEPRECATED -- requires forward rendering
 		LL_PROFILE_ZONE_NAMED_CATEGORY_DRAWPOOL("pools"); //LL_RECORD_BLOCK_TIME(FTM_POOLS);
 		
 		// HACK: don't calculate local lights if we're rendering the HUD!
@@ -4423,7 +4425,6 @@ void LLPipeline::renderGeom(LLCamera& camera, bool forceVBOUpdate)
 			setupHWLights(NULL);
 		}
 
-		bool occlude = sUseOcclusion > 1;
 		U32 cur_type = 0;
 
 		pool_set_t::iterator iter1 = mPools.begin();
@@ -4444,6 +4445,7 @@ void LLPipeline::renderGeom(LLCamera& camera, bool forceVBOUpdate)
 				LLGLSLShader::bindNoShader();
 				doOcclusion(camera);
 			}
+
 
 			pool_set_t::iterator iter2 = iter1;
 			if (hasRenderType(poolp->getType()) && poolp->getNumPasses() > 0)
@@ -4492,12 +4494,13 @@ void LLPipeline::renderGeom(LLCamera& camera, bool forceVBOUpdate)
 			}
 			iter1 = iter2;
 			stop_glerror();
+
 		}
 		
 		LLAppViewer::instance()->pingMainloopTimeout("Pipeline:RenderDrawPoolsEnd");
 
 		LLVertexBuffer::unbind();
-			
+#endif			
 		gGLLastMatrix = NULL;
 		gGL.loadMatrix(gGLModelView);
 
@@ -6235,22 +6238,6 @@ void LLPipeline::calcNearbyLights(LLCamera& camera)
 	}
 }
 
-void LLPipeline::adjustAmbient(const LLSettingsSky* sky, LLColor4& ambient)
-{
-    //bump ambient based on reflection probe ambiance of probes are disabled 
-    // so sky settings that rely on probes for ambiance don't go completely dark
-    // on low end hardware
-    if (!LLPipeline::sReflectionProbesEnabled)
-    {
-        F32 ambiance = linearTosRGB(sky->getReflectionProbeAmbiance());
-
-        for (int i = 0; i < 3; ++i)
-        {
-            ambient.mV[i] = llmax(ambient.mV[i], ambiance);
-        }
-    }
-}
-
 void LLPipeline::setupHWLights(LLDrawPool* pool)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
@@ -6261,8 +6248,7 @@ void LLPipeline::setupHWLights(LLDrawPool* pool)
 
     // Ambient
     LLColor4 ambient = psky->getTotalAmbient();
-    adjustAmbient(psky.get(), ambient);
-    
+
 	gGL.setAmbientLightColor(ambient);
 
     bool sun_up  = environment.getIsSunUp();
@@ -9393,7 +9379,11 @@ void LLPipeline::generateWaterReflection(LLCamera& camera_in)
         glh::matrix4f saved_projection = get_current_projection();
         glh::matrix4f mat;
 
+#if 1 // relies on forward rendering, which is deprecated -- TODO - make a deferred implementation of transparent/reflective water
         S32 reflection_detail  = RenderReflectionDetail;
+#else
+        S32 reflection_detail = WATER_REFLECT_NONE_WATER_TRANSPARENT;
+#endif
 
         F32 water_height      = gAgent.getRegion()->getWaterHeight(); 
         F32 camera_height     = camera_in.getOrigin().mV[VZ];
@@ -9619,12 +9609,15 @@ void LLPipeline::generateWaterReflection(LLCamera& camera_in)
                 mWaterDis.clear();
                 gGL.setColorMask(true, false);
 
+#if 0  // DEPRECATED - requires forward rendering, TODO - make a deferred implementation
                 if (reflection_detail >= WATER_REFLECT_NONE_WATER_TRANSPARENT)
                 {
                     updateCull(camera, mRefractedObjects, &plane);
                     stateSort(camera, mRefractedObjects);
                     renderGeom(camera);
                 }
+#endif
+
 
                 gUIProgram.bind();
 
