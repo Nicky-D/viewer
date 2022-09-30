@@ -49,8 +49,13 @@ viewer_dir = os.path.dirname(__file__)
 # indra.util.llmanifest under their system Python!
 sys.path.insert(0, os.path.join(viewer_dir, os.pardir, "lib", "python"))
 from indra.util.llmanifest import LLManifest, main, path_ancestors, CHANNEL_VENDOR_BASE, RELEASE_CHANNEL, ManifestError, MissingError
-from llbase import llsd
 
+try:
+    from llbase import llsd
+    LLBASE_IMPORTED=True
+except:
+    LLBASE_IMPORTED=False
+    
 class ViewerManifest(LLManifest):
     def is_packaging_viewer(self):
         # Some commands, files will only be included
@@ -134,9 +139,10 @@ class ViewerManifest(LLManifest):
 
                 # put_in_file(src=) need not be an actual pathname; it
                 # only needs to be non-empty
-                self.put_in_file(llsd.format_pretty_xml(settings_install),
-                                 "settings_install.xml",
-                                 src="environment")
+                if LLBASE_IMPORTED:
+                    self.put_in_file(llsd.format_pretty_xml(settings_install),
+                                     "settings_install.xml",
+                                     src="environment")
 
 
             with self.prefix(src_dst="character"):
@@ -1523,16 +1529,19 @@ class LinuxManifest(ViewerManifest):
                               '-type', 'f', '-perm', old,
                               '-exec', 'chmod', new, '{}', ';'])
 
+        realname = self.get_dst_prefix()
+        tempname = self.build_path_of(installer_name)
         if "FLATPAK_DEST" in os.environ:
-            self.package_file = "<none>. No packaging needed when building a flatpak"
+            flatpakDest = os.environ["FLATPAK_DEST"] 
+            print( "Moving result into %s" % flatpakDest )
+            shutil.move( realname, "%s/viewer" % flatpakDest ) 
+            self.package_file = flatpakDest
             return
             
         self.package_file = installer_name + '.tar.bz2'
 
         # temporarily move directory tree so that it has the right
         # name in the tarfile
-        realname = self.get_dst_prefix()
-        tempname = self.build_path_of(installer_name)
         self.run_command(["mv", realname, tempname])
         try:
             # only create tarball if it's a release build.
@@ -1549,8 +1558,15 @@ class LinuxManifest(ViewerManifest):
             self.run_command(["mv", tempname, realname])
 
     def strip_binaries(self):
+        doStrip = False
         if self.args['buildtype'].lower() == 'release' and self.is_packaging_viewer():
-            print("* Going strip-crazy on the packaged binaries, since this is a RELEASE build")
+            doStrip = True
+        # In case of flatpak flatpak-build will call strip, disable doStrip here to get a flatpak symbol package. Increases flatpak size by about 1G
+        if "FLATPAK_DEST" in os.environ:
+            doStrip = True
+
+        if doStrip:
+            print("* Going strip-crazy on the packaged binaries, since this is a Release build")
             # makes some small assumptions about our packaged dir structure
             self.run_command(
                 ["find"] +
@@ -1563,6 +1579,7 @@ class LinuxManifest(ViewerManifest):
                  '!', '-name', '*.dll',
                  '!', '-name', '*.lib',
                  '!', '-name', 'update_install', '-exec', 'strip', '-S', '{}', ';'])
+
 class Linux_x86_64_Manifest(LinuxManifest):
     address_size = 64
 
