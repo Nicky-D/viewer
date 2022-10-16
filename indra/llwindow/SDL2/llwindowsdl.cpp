@@ -384,6 +384,12 @@ LLWindowSDL::LLWindowSDL(LLWindowCallbacks* callbacks,
     mIsMinimized = -1;
     mFSAASamples = fsaa_samples;
 
+	mGPUInfo = ndgpuinfo::init();
+	if( !mGPUInfo )
+	{
+		LL_WARNS() << "GPUInfo could not be initialized" << LL_ENDL;
+	}
+	
 #if LL_X11
     mSDL_XWindowID = None;
     mSDL_Display = NULL;
@@ -945,6 +951,8 @@ LLWindowSDL::~LLWindowSDL()
     quitCursors();
     destroyContext();
 
+	ndgpuinfo::shutdown( mGPUInfo );
+	
     if(mSupportedResolutions != NULL)
     {
         delete []mSupportedResolutions;
@@ -2619,7 +2627,19 @@ void LLWindowSDL::toggleVSync(bool enable_vsync)
 
 U32 LLWindowSDL::getAvailableVRAMMegabytes()
 {
-    return 4096;
+	if( !mGPUInfo )
+	    return 4096;
+
+	auto totalVRAM = ndgpuinfo::getTotalMemory( mGPUInfo )/(1024*1024);
+	auto usedVRAM = ndgpuinfo::getUsedMemory( mGPUInfo )/(1024*1024);
+
+	if( totalVRAM == 0 )
+		return 4096;
+
+	if( totalVRAM <= usedVRAM )
+		return 0;
+
+	return totalVRAM - usedVRAM;	
 }
 
 #endif // LL_SDL

@@ -67,6 +67,11 @@ set(viewer_HEADER_FILES
 # Libraries on which this library depends, needed for Linux builds
 # Sort by high-level to low-level
 if (LINUX)
+  FetchContent_Declare( ndGPUInfo
+    GIT_REPOSITORY git@github.com:Nicky-D/ndGPUInfo.git
+    GIT_TAG main)
+  FetchContent_MakeAvailable( ndGPUInfo )
+  
   set(llwindow_LINK_LIBRARIES
       ${LLCOMMON_LIBRARIES}
       ${LLIMAGE_LIBRARIES}
@@ -75,6 +80,7 @@ if (LINUX)
       ${LLFILESYSTEM_LIBRARIES}
       ${LLXML_LIBRARIES}
       ${UI_LIBRARIES}     # for GTK
+      ndGPUInfo
       sdl
       libfontconfig.a          # For FCInit and other FC* functions.
       libfreetype.a
