@@ -214,7 +214,7 @@ BOOL LLShaderMgr::attachShaderFeatures(LLGLSLShader * shader)
 	}
 
     // we want this BEFORE shadows and AO because those facilities use pos/norm access
-    if (features->isDeferred)
+    if (features->isDeferred || features->hasReflectionProbes)
 	{
         if (!shader->attachFragmentObject("deferred/deferredUtil.glsl"))
 		{
@@ -1357,6 +1357,7 @@ void LLShaderMgr::initAttribsAndUniforms()
 	mReservedUniforms.push_back("specular");
 	mReservedUniforms.push_back("lightExp");
 	mReservedUniforms.push_back("waterFogColor");
+    mReservedUniforms.push_back("waterFogColorLinear");
 	mReservedUniforms.push_back("waterFogDensity");
 	mReservedUniforms.push_back("waterFogKS");
 	mReservedUniforms.push_back("refScale");

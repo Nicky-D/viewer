@@ -161,7 +161,7 @@ void display_startup()
 	LLGLState::checkStates();
 	LLGLState::checkTextureChannels();
 
-	glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glClear(GL_DEPTH_BUFFER_BIT | GL_COLOR_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
 	LLGLSUIDefault gls_ui;
 	gPipeline.disableLights();
 
@@ -763,7 +763,7 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
 				LLGLState::checkTextureChannels();
 
 			}
-			glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+            glClear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
 		}
 
 		LLGLState::checkStates();
@@ -772,7 +772,6 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
 		{
 			LL_PROFILE_ZONE_NAMED_CATEGORY_DISPLAY("display - 3")
 			LLAppViewer::instance()->pingMainloopTimeout("Display:Imagery");
-			gPipeline.generateWaterReflection(*LLViewerCamera::getInstance());
 			gPipeline.generateHighlight(*LLViewerCamera::getInstance());
 			gPipeline.renderPhysicsDisplay();
 		}
@@ -861,7 +860,6 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
 		{
 			glClearColor(0.5f, 0.5f, 0.5f, 0.f);
 			glClear(GL_COLOR_BUFFER_BIT);
-			glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 		}
 
 		LLAppViewer::instance()->pingMainloopTimeout("Display:RenderStart");
@@ -914,7 +912,15 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
         if (LLPipeline::sRenderDeferred)
         {
             gPipeline.mRT->deferredScreen.bindTarget();
-            glClearColor(1, 0, 1, 1);
+            if (gUseWireframe)
+            {
+                F32 g = 0.5f;
+                glClearColor(g, g, g, 1.f);
+            }
+            else
+            {
+                glClearColor(1, 0, 1, 1);
+            }
             gPipeline.mRT->deferredScreen.clear();
         }
         else
@@ -962,7 +968,7 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
 			gGL.setColorMask(true, false);
 			if (LLPipeline::sRenderDeferred)
 			{
-				gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance());
+				gPipeline.renderGeomDeferred(*LLViewerCamera::getInstance(), true);
 			}
 			else
 			{
@@ -998,16 +1004,16 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
         LLRenderTarget &rt = (gPipeline.sRenderDeferred ? gPipeline.mRT->deferredScreen : gPipeline.mRT->screen);
         rt.flush();
 
-        if (rt.sUseFBO)
+        /*if (rt.sUseFBO)
         {
             LLRenderTarget::copyContentsToFramebuffer(rt, 0, 0, rt.getWidth(), rt.getHeight(), 0, 0, rt.getWidth(),
                                                       rt.getHeight(), GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT,
                                                       GL_NEAREST);
-        }
+        }*/
 
         if (LLPipeline::sRenderDeferred)
         {
-			gPipeline.renderDeferredLighting(&gPipeline.mRT->screen);
+			gPipeline.renderDeferredLighting();
 		}
 
 		LLPipeline::sUnderWaterRender = FALSE;
@@ -1062,11 +1068,9 @@ void display_cube_face()
 
     llassert(!gSnapshot);
     llassert(!gTeleportDisplay);
-    llassert(LLPipeline::sRenderDeferred);
     llassert(LLStartUp::getStartupState() >= STATE_PRECACHE);
     llassert(!LLAppViewer::instance()->logoutRequestSent());
     llassert(!gRestoreGL);
-    llassert(!gUseWireframe);
 
     bool rebuild = false;
 
@@ -1105,10 +1109,11 @@ void display_cube_face()
     gPipeline.updateCull(*LLViewerCamera::getInstance(), result);
 
     gGL.setColorMask(true, true);
+
     glClearColor(0, 0, 0, 0);
     gPipeline.generateSunShadow(*LLViewerCamera::getInstance());
         
-    glClear(GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glClear(GL_DEPTH_BUFFER_BIT); // | GL_STENCIL_BUFFER_BIT);
 
     {
         LLViewerCamera::sCurCameraID = LLViewerCamera::CAMERA_WORLD;
@@ -1135,7 +1140,14 @@ void display_cube_face()
     gGL.setColorMask(true, true);
 
     gPipeline.mRT->deferredScreen.bindTarget();
-    glClearColor(1, 0, 1, 1);
+    if (gUseWireframe)
+    {
+        glClearColor(0.5f, 0.5f, 0.5f, 1.f);
+    }
+    else
+    {
+        glClearColor(1, 0, 1, 1);
+    }
     gPipeline.mRT->deferredScreen.clear();
         
     gGL.setColorMask(true, false);
@@ -1148,12 +1160,12 @@ void display_cube_face()
 
     gPipeline.mRT->deferredScreen.flush();
        
-    gPipeline.renderDeferredLighting(&gPipeline.mRT->screen);
+    gPipeline.renderDeferredLighting();
 
     LLPipeline::sUnderWaterRender = FALSE;
 
     // Finalize scene
-    gPipeline.renderFinalize();
+    //gPipeline.renderFinalize();
 
     LLSpatialGroup::sNoDelete = FALSE;
     gPipeline.clearReferences();
@@ -1223,6 +1235,8 @@ void render_hud_attachments()
 		gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_SIMPLE);
 		gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_VOLUME);
 		gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_ALPHA);
+        gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_ALPHA_PRE_WATER);
+        gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_ALPHA_POST_WATER);
 		gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_ALPHA_MASK);
 		gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_FULLBRIGHT_ALPHA_MASK);
 		gPipeline.toggleRenderType(LLPipeline::RENDER_TYPE_FULLBRIGHT);
@@ -1239,7 +1253,7 @@ void render_hud_attachments()
 		
 		gPipeline.stateSort(hud_cam, result);
 
-		gPipeline.renderGeom(hud_cam);
+		gPipeline.renderGeomPostDeferred(hud_cam);
 
 		LLSpatialGroup::sNoDelete = FALSE;
 		//gPipeline.clearReferences();
@@ -1376,10 +1390,10 @@ void render_ui(F32 zoom_factor, int subfield)
 		gGL.popMatrix();
 	}
 
-	// Finalize scene
-	gPipeline.renderFinalize();
-
 	{
+        // draw hud and 3D ui elements into screen render target so they'll be able to use 
+        // the depth buffer (avoids extra copy of depth buffer per frame)
+        gPipeline.mRT->screen.bindTarget();
 		// SL-15709
 		// NOTE: Tracy only allows one ZoneScoped per function.
 		// Solutions are:
@@ -1396,41 +1410,45 @@ void render_ui(F32 zoom_factor, int subfield)
 			gPipeline.disableLights();
 		}
 
-		{
-			gGL.color4f(1,1,1,1);
-			if (gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI))
-			{
-				if (!gDisconnected)
-				{
-					LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 3D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_3D);
-					render_ui_3d();
-					LLGLState::checkStates();
-				}
-				else
-				{
-					render_disconnected_background();
-				}
+        gGL.color4f(1,1,1,1);
 
-				LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 2D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_2D);
-				render_ui_2d();
-				LLGLState::checkStates();
-			}
-			gGL.flush();
+        bool render_ui = gPipeline.hasRenderDebugFeatureMask(LLPipeline::RENDER_DEBUG_FEATURE_UI);
+        if (render_ui)
+        {
+            if (!gDisconnected)
+            {
+                LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 3D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_3D);
+                render_ui_3d();
+                LLGLState::checkStates();
+            }
+            else
+            {
+                render_disconnected_background();
+            }
+        }
 
-			gViewerWindow->setup2DRender();
-			gViewerWindow->updateDebugText();
-			gViewerWindow->drawDebugText();
+        gPipeline.mRT->screen.flush();
 
-			LLVertexBuffer::unbind();
-		}
+        // apply gamma correction and post effects before rendering 2D UI
+        gPipeline.renderFinalize();
 
-		if (!gSnapshot)
-		{
-			set_current_modelview(saved_view);
-			gGL.popMatrix();
-		}
+        if (render_ui)
+        {
+            LL_PROFILE_ZONE_NAMED_CATEGORY_UI("UI 2D"); //LL_RECORD_BLOCK_TIME(FTM_RENDER_UI_2D);
+            LLHUDObject::renderAll();
+            render_ui_2d();
+        }
 
-	} // Tracy integration
+        gViewerWindow->setup2DRender();
+        gViewerWindow->updateDebugText();
+        gViewerWindow->drawDebugText();
+	}
+
+	if (!gSnapshot)
+	{
+		set_current_modelview(saved_view);
+		gGL.popMatrix();
+	}
 }
 
 static LLTrace::BlockTimerStatHandle FTM_SWAP("Swap");

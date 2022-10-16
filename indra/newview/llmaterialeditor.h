@@ -136,7 +136,11 @@ public:
 
     static void finishTaskUpload(LLUUID itemId, LLUUID newAssetId, LLUUID taskId);
 
-    static void finishSaveAs(const LLUUID &oldItemId, const LLUUID &newItemId, const std::string &buffer);
+    static void finishSaveAs(
+        const LLSD &oldKey,
+        const LLUUID &newItemId,
+        const std::string &buffer,
+        bool has_unsaved_changes);
 
     void refreshFromInventory(const LLUUID& new_item_id = LLUUID::null);
 
@@ -147,6 +151,7 @@ public:
 
     // llpreview
     void setObjectID(const LLUUID& object_id) override;
+    void setAuxItem(const LLInventoryItem* item) override;
 
 	// llpanel
 	BOOL postBuild() override;
@@ -210,6 +215,10 @@ public:
 
     // initialize the UI from a default GLTF material
     void loadDefaults();
+
+    void modifyMaterialCoro(std::string cap_url, LLSD overrides);
+    void setOverrideTarget(U32 local_id, S32 face_id);
+
 private:
     void loadMaterial(const tinygltf::Model &model, const std::string &filename_lc, S32 index);
 
@@ -259,5 +268,8 @@ private:
     S32 mExpectedUploadCost;
     std::string mMaterialNameShort;
     std::string mMaterialName;
+
+    U32 mOverrideLocalId;
+    S32 mOverrideFace;
 };
 

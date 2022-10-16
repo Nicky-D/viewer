@@ -4212,7 +4212,7 @@ U32 LLVOVolume::getRenderCost(texture_cost_t &textures) const
 			}
 		}
 
-		if (face->getPoolType() == LLDrawPool::POOL_ALPHA)
+		if (face->isInAlphaPool())
 		{
 			alpha = 1;
 		}
@@ -4576,7 +4576,7 @@ F32 LLVOVolume::getBinRadius()
 		{
 			LLFace* face = mDrawable->getFace(i);
 			if (!face) continue;
-			if (face->getPoolType() == LLDrawPool::POOL_ALPHA &&
+			if (face->isInAlphaPool() &&
 			    !face->canRenderAsMask())
 			{
 				alpha_wrap = TRUE;
@@ -5318,6 +5318,8 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 	{
 		return;
 	}
+
+	LL_LABEL_VERTEX_BUFFER(facep->getVertexBuffer(), LLRenderPass::lookupPassName(type));
 
     U32 passType = type;
 
@@ -6462,11 +6464,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
         buffer_index = -1;
     }
 
-	static LLCachedControl<U32> max_texture_index(gSavedSettings, "RenderMaxTextureIndex", 16);
-	texture_index_channels = llmin(texture_index_channels, (S32) max_texture_index);
-	
-	//NEVER use more than 16 texture index channels (workaround for prevalent driver bug)
-	texture_index_channels = llmin(texture_index_channels, 16);
+	texture_index_channels = LLGLSLShader::sIndexedTextureChannels;
 
 	bool flexi = false;
 

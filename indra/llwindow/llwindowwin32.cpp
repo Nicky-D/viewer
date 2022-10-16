@@ -66,6 +66,7 @@
 
 #include <d3d9.h>
 #include <dxgi1_4.h>
+#include <timeapi.h>
 
 // Require DirectInput version 8
 #define DIRECTINPUT_VERSION 0x0800
@@ -1376,8 +1377,8 @@ BOOL LLWindowWin32::switchContext(BOOL fullscreen, const LLCoordScreen& size, BO
 		attrib_list[cur_attrib++] = WGL_DEPTH_BITS_ARB;
 		attrib_list[cur_attrib++] = 24;
 
-		attrib_list[cur_attrib++] = WGL_STENCIL_BITS_ARB;
-		attrib_list[cur_attrib++] = 8;
+		//attrib_list[cur_attrib++] = WGL_STENCIL_BITS_ARB; //stencil buffer is deprecated (performance penalty)
+		//attrib_list[cur_attrib++] = 8;
 
 		attrib_list[cur_attrib++] = WGL_DRAW_TO_WINDOW_ARB;
 		attrib_list[cur_attrib++] = GL_TRUE;
@@ -4826,6 +4827,14 @@ void LLWindowWin32::LLWindowWin32Thread::run()
     LogChange logger("Window");
 
     initDX();
+
+    //as good a place as any to up the MM timer resolution (see ms_sleep)
+    //attempt to set timer resolution to 1ms
+    TIMECAPS tc;
+    if (timeGetDevCaps(&tc, sizeof(TIMECAPS)) == TIMERR_NOERROR)
+    {
+        timeBeginPeriod(llclamp((U32) 1, tc.wPeriodMin, tc.wPeriodMax));
+    }
 
     while (! getQueue().done())
     {

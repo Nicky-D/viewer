@@ -56,6 +56,8 @@ BOOL LLDrawPoolAlpha::sShowDebugAlpha = FALSE;
 
 #define current_shader (LLGLSLShader::sCurBoundShaderPtr)
 
+LLVector4 LLDrawPoolAlpha::sWaterPlane;
+
 static BOOL deferred_render = FALSE;
 
 // minimum alpha before discarding a fragment
@@ -96,10 +98,12 @@ S32 LLDrawPoolAlpha::getNumPostDeferredPasses()
 }
 
 // set some common parameters on the given shader to prepare for alpha rendering
-static void prepare_alpha_shader(LLGLSLShader* shader, bool textureGamma, bool deferredEnvironment)
+static void prepare_alpha_shader(LLGLSLShader* shader, bool textureGamma, bool deferredEnvironment, F32 water_sign)
 {
     static LLCachedControl<F32> displayGamma(gSavedSettings, "RenderDeferredDisplayGamma");
     F32 gamma = displayGamma;
+
+    static LLStaticHashedString waterSign("waterSign");
 
     // Does this deferred shader need environment uniforms set such as sun_dir, etc. ?
     // NOTE: We don't actually need a gbuffer since we are doing forward rendering (for transparency) post deferred rendering
@@ -115,6 +119,8 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool textureGamma, bool d
     }
     shader->uniform1i(LLShaderMgr::NO_ATMO, (LLPipeline::sRenderingHUDs) ? 1 : 0);
     shader->uniform1f(LLShaderMgr::DISPLAY_GAMMA, (gamma > 0.1f) ? 1.0f / gamma : (1.0f / 2.2f));
+    shader->uniform1f(waterSign, water_sign);
+    shader->uniform4fv(LLShaderMgr::WATER_WATERPLANE, 1, LLDrawPoolAlpha::sWaterPlane.mV);
 
     if (LLPipeline::sImpostorRender)
     {
@@ -132,7 +138,7 @@ static void prepare_alpha_shader(LLGLSLShader* shader, bool textureGamma, bool d
     //also prepare rigged variant
     if (shader->mRiggedVariant && shader->mRiggedVariant != shader)
     { 
-        prepare_alpha_shader(shader->mRiggedVariant, textureGamma, deferredEnvironment);
+        prepare_alpha_shader(shader->mRiggedVariant, textureGamma, deferredEnvironment, water_sign);
     }
 }
 
@@ -141,21 +147,46 @@ extern BOOL gCubeSnapshot;
 void LLDrawPoolAlpha::renderPostDeferred(S32 pass) 
 { 
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL;
+
+    if ((!LLPipeline::sRenderTransparentWater || gCubeSnapshot) && getType() == LLDrawPool::POOL_ALPHA_PRE_WATER)
+    { // don't render alpha objects on the other side of the water plane if water is opaque
+        return;
+    }
     deferred_render = TRUE;
+
+    F32 water_sign = 1.f;
+
+    if (getType() == LLDrawPool::POOL_ALPHA_PRE_WATER)
+    {
+        water_sign = -1.f;
+    }
+
+    if (LLPipeline::sUnderWaterRender)
+    {
+        water_sign *= -1.f;
+    }
 
     // prepare shaders
     emissive_shader = (LLPipeline::sRenderDeferred)   ? &gDeferredEmissiveProgram    :
                       (LLPipeline::sUnderWaterRender) ? &gObjectEmissiveWaterProgram : &gObjectEmissiveProgram;
-    prepare_alpha_shader(emissive_shader, true, false);
+    prepare_alpha_shader(emissive_shader, true, false, water_sign);
 
     fullbright_shader   = (LLPipeline::sImpostorRender) ? &gDeferredFullbrightAlphaMaskProgram :
         (LLPipeline::sUnderWaterRender) ? &gDeferredFullbrightWaterProgram : &gDeferredFullbrightAlphaMaskProgram;
-    prepare_alpha_shader(fullbright_shader, true, true);
+    prepare_alpha_shader(fullbright_shader, true, true, water_sign);
 
     simple_shader   = (LLPipeline::sImpostorRender) ? &gDeferredAlphaImpostorProgram :
         (LLPipeline::sUnderWaterRender) ? &gDeferredAlphaWaterProgram : &gDeferredAlphaProgram;
-    prepare_alpha_shader(simple_shader, false, true); //prime simple shader (loads shadow relevant uniforms)
+    prepare_alpha_shader(simple_shader, false, true, water_sign); //prime simple shader (loads shadow relevant uniforms)
 
+
+    LLGLSLShader* materialShader = LLPipeline::sUnderWaterRender ? gDeferredMaterialWaterProgram : gDeferredMaterialProgram;
+    for (int i = 0; i < LLMaterial::SHADER_COUNT*2; ++i)
+    {
+        prepare_alpha_shader(&materialShader[i], false, false, water_sign);
+    }
+
+    prepare_alpha_shader(&gDeferredPBRAlphaProgram, false, false, water_sign);
 
     // first pass, render rigged objects only and render to depth buffer
     forwardRender(true);
@@ -167,10 +198,10 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
     if (!LLPipeline::sImpostorRender && gSavedSettings.getBOOL("RenderDepthOfField") && !gCubeSnapshot)
     { 
         //update depth buffer sampler
-        gPipeline.mRT->screen.flush();
+        /*gPipeline.mRT->screen.flush();
         gPipeline.mRT->deferredDepth.copyContents(gPipeline.mRT->deferredScreen, 0, 0, gPipeline.mRT->deferredScreen.getWidth(), gPipeline.mRT->deferredScreen.getHeight(),
             0, 0, gPipeline.mRT->deferredDepth.getWidth(), gPipeline.mRT->deferredDepth.getHeight(), GL_DEPTH_BUFFER_BIT, GL_NEAREST);
-        gPipeline.mRT->deferredDepth.bindTarget();
+        gPipeline.mRT->deferredDepth.bindTarget();*/
         simple_shader = fullbright_shader = &gObjectFullbrightAlphaMaskProgram;
 
         simple_shader->bind();
@@ -184,8 +215,8 @@ void LLDrawPoolAlpha::renderPostDeferred(S32 pass)
         renderAlpha(getVertexDataMask() | LLVertexBuffer::MAP_TEXTURE_INDEX | LLVertexBuffer::MAP_TANGENT | LLVertexBuffer::MAP_TEXCOORD1 | LLVertexBuffer::MAP_TEXCOORD2, 
             true); // <--- discard mostly transparent faces
 
-        gPipeline.mRT->deferredDepth.flush();
-        gPipeline.mRT->screen.bindTarget();
+        //gPipeline.mRT->deferredDepth.flush();
+        //gPipeline.mRT->screen.bindTarget();
         gGL.setColorMask(true, false);
     }
 
@@ -798,7 +829,7 @@ void LLDrawPoolAlpha::renderAlpha(U32 mask, bool depth_only, bool rigged)
                 bool tex_setup = TexSetup(&params, (mat != nullptr));
 
 				{
-					LLGLEnableFunc stencil_test(GL_STENCIL_TEST, params.mSelected, &LLGLCommonFunc::selected_stencil_test);
+					//LLGLEnableFunc stencil_test(GL_STENCIL_TEST, params.mSelected, &LLGLCommonFunc::selected_stencil_test);
 
 					gGL.blendFunc((LLRender::eBlendFactor) params.mBlendFuncSrc, (LLRender::eBlendFactor) params.mBlendFuncDst, mAlphaSFactor, mAlphaDFactor);
 
