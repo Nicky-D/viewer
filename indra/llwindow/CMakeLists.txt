@@ -82,8 +82,8 @@ if (LINUX)
       ${UI_LIBRARIES}     # for GTK
       ndGPUInfo
       sdl
-      libfontconfig.a          # For FCInit and other FC* functions.
-      libfreetype.a
+      Fontconfig::Fontconfig 
+      Freetype::Freetype
       libuuid.a
       )
 
