@@ -29,11 +29,14 @@
 
 #include "llimage.h"
 #include "llpointer.h"
+#include <future>
 
 namespace LL
 {
     class ThreadPool;
 } // namespace LL
+
+class ImageRequest;
 
 class LLImageDecodeThread
 {
@@ -60,10 +63,25 @@ public:
 	void shutdown();
 
 private:
+#ifndef LL_LINUX
 	// As of SL-17483, LLImageDecodeThread is no longer itself an
 	// LLQueuedThread - instead this is the API by which we submit work to the
 	// "ImageDecode" ThreadPool.
 	std::unique_ptr<LL::ThreadPool> mThreadPool;
+
+#else
+    struct FutureResult
+    {
+        ImageRequest  *mRequest = nullptr;
+        bool mRequestResult = false;
+    };
+
+    std::vector< std::shared_future< FutureResult > > mRequests;
+    std::vector< ImageRequest* > mCreationList;
+    std::atomic< int32_t > mPending;
+    LLMutex mMutex;
+    void updateImplLinux();
+#endif
 };
 
 #endif
