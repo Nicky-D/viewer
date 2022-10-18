@@ -561,19 +561,21 @@ void LLRenderTarget::bindTexture(U32 index, S32 channel, LLTexUnit::eTextureFilt
 
     bool isSRGB = false;
     llassert(mInternalFormat.size() > index);
-    switch (mInternalFormat[index])
+    if( index < mInternalFormat.size() )
     {
-        case GL_SRGB:
-        case GL_SRGB8:
-        case GL_SRGB_ALPHA:
-        case GL_SRGB8_ALPHA8:
-            isSRGB = true;
-            break;
+        switch(mInternalFormat[index])
+        {
+            case GL_SRGB:
+            case GL_SRGB8:
+            case GL_SRGB_ALPHA:
+            case GL_SRGB8_ALPHA8:
+                isSRGB = true;
+                break;
 
-        default:
-            break;
+            default:
+                break;
+        }
     }
-
     gGL.getTexUnit(channel)->setTextureFilteringOption(filter_options);
     gGL.getTexUnit(channel)->setTextureColorSpace(isSRGB ? LLTexUnit::TCS_SRGB : LLTexUnit::TCS_LINEAR);
 }
