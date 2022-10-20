@@ -72,6 +72,9 @@ static void setup_glow_shader(LLGLSLShader* shader)
 
 static void setup_fullbright_shader(LLGLSLShader* shader)
 {
+    if( !shader )
+        return;
+
     setup_glow_shader(shader);
     shader->uniform1f(LLViewerShaderMgr::FULLBRIGHT, 1.f);
 }
