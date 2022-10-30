@@ -184,7 +184,12 @@ public:
     void setHasRenderMaterialParams(bool has_params);
 
     const LLUUID& getRenderMaterialID(U8 te) const;
-    void setRenderMaterialID(U8 te, const LLUUID& id, bool update_server = true);
+
+    // set the RenderMaterialID for the given TextureEntry
+    // te - TextureEntry index to set, or -1 for all TEs
+    // id - asset id of material asset
+    // update_server - if true, will send updates to server
+    void setRenderMaterialID(S32 te, const LLUUID& id, bool update_server = true);
     void setRenderMaterialIDs(const LLUUID& id);
 
 	virtual BOOL	isHUDAttachment() const { return FALSE; }
@@ -356,6 +361,7 @@ public:
 	/*virtual*/ S32     setTEGlow(const U8 te, const F32 glow);
 	/*virtual*/ S32     setTEMaterialID(const U8 te, const LLMaterialID& pMaterialID);
 	/*virtual*/ S32		setTEMaterialParams(const U8 te, const LLMaterialPtr pMaterialParams);
+    virtual     S32     setTEGLTFMaterialOverride(U8 te, LLGLTFMaterial* mat);
 
 	// Used by Materials update functions to properly kick off rebuilds
 	// of VBs etc when materials updates require changes.
@@ -371,12 +377,6 @@ public:
 	LLViewerTexture		*getTENormalMap(const U8 te) const;
 	LLViewerTexture		*getTESpecularMap(const U8 te) const;
 
-    LLViewerTexture* getGLTFBaseColorMap(U8 te) const { return mGLTFBaseColorMaps[te]; }
-    LLViewerTexture* getGLTFNormalMap(U8 te) const { return mGLTFNormalMaps[te]; }
-    LLViewerTexture* getGLTFEmissiveMap(U8 te) const { return mGLTFEmissiveMaps[te]; }
-    LLViewerTexture* getGLTFMetallicRoughnessMap(U8 te) const { return mGLTFMetallicRoughnessMaps[te]; }
-
-	
 	bool 						isImageAlphaBlended(const U8 te) const;
 
 	void fitFaceTexture(const U8 face);
@@ -693,13 +693,6 @@ public:
 	LLPointer<LLViewerTexture> *mTENormalMaps;
 	LLPointer<LLViewerTexture> *mTESpecularMaps;
     
-    std::vector<LLPointer<LLViewerTexture> > mGLTFBaseColorMaps;
-    std::vector<LLPointer<LLViewerTexture> > mGLTFNormalMaps;
-    std::vector<LLPointer<LLViewerTexture> > mGLTFMetallicRoughnessMaps;
-    std::vector<LLPointer<LLViewerTexture> > mGLTFEmissiveMaps;
-
-
-
     // true if user can select this object by clicking under any circumstances (even if pick_unselectable is true)
     // can likely be factored out
     BOOL			mbCanSelect;

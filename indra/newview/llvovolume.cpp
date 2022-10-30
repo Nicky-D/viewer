@@ -88,6 +88,7 @@
 #include "llcallstack.h"
 #include "llsculptidsize.h"
 #include "llavatarappearancedefines.h"
+#include "llgltfmateriallist.h"
 
 const F32 FORCE_SIMPLE_RENDER_AREA = 512.f;
 const F32 FORCE_CULL_AREA = 8.f;
@@ -1700,7 +1701,7 @@ BOOL LLVOVolume::genBBoxes(BOOL force_global, BOOL should_update_octree_bounds)
         // updates needed, set REBUILD_RIGGED accordingly.
 
         // Without the flag, this will remove unused rigged volumes, which we are not currently very aggressive about.
-        updateRiggedVolume();
+        updateRiggedVolume(false);
     }
 
     LLVolume* volume = mRiggedVolume;
@@ -1994,7 +1995,7 @@ BOOL LLVOVolume::updateGeometry(LLDrawable *drawable)
 	
 	if (mDrawable->isState(LLDrawable::REBUILD_RIGGED))
 	{
-		updateRiggedVolume();
+        updateRiggedVolume(false);
 		genBBoxes(FALSE);
 		mDrawable->clearState(LLDrawable::REBUILD_RIGGED);
 	}
@@ -2609,6 +2610,24 @@ S32 LLVOVolume::setTEMaterialParams(const U8 te, const LLMaterialPtr pMaterialPa
 	return TEM_CHANGE_TEXTURE;
 }
 
+S32 LLVOVolume::setTEGLTFMaterialOverride(U8 te, LLGLTFMaterial* mat)
+{
+    S32 retval = LLViewerObject::setTEGLTFMaterialOverride(te, mat);
+
+    if (retval == TEM_CHANGE_TEXTURE)
+    {
+        if (!mDrawable.isNull())
+        {
+            gPipeline.markTextured(mDrawable);
+            gPipeline.markRebuild(mDrawable, LLDrawable::REBUILD_ALL);
+        }
+        mFaceMappingChanged = TRUE;
+    }
+
+    return retval;
+}
+
+
 S32 LLVOVolume::setTEScale(const U8 te, const F32 s, const F32 t)
 {
 	S32 res = LLViewerObject::setTEScale(te, s, t);
@@ -2641,6 +2660,7 @@ S32 LLVOVolume::setTEScaleT(const U8 te, const F32 t)
 	}
 	return res;
 }
+
 
 void LLVOVolume::updateTEData()
 {
@@ -4754,7 +4774,7 @@ BOOL LLVOVolume::lineSegmentIntersect(const LLVector4a& start, const LLVector4a&
 	{
 		if ((pick_rigged) || (getAvatar() && (getAvatar()->isSelf()) && (LLFloater::isVisible(gFloaterTools))))
 		{
-			updateRiggedVolume(true);
+            updateRiggedVolume(true, LLRiggedVolume::DO_NOT_UPDATE_FACES);
 			volume = mRiggedVolume;
 			transform = false;
 		}
@@ -4829,6 +4849,9 @@ BOOL LLVOVolume::lineSegmentIntersect(const LLVector4a& start, const LLVector4a&
 				continue;
 			}
 
+            // This calculates the bounding box of the skinned mesh from scratch. It's actually quite expensive, but not nearly as expensive as building a full octree.
+            // rebuild_face_octrees = false because an octree for this face will be built later only if needed for narrow phase picking.
+            updateRiggedVolume(true, i, false);
 			face_hit = volume->lineSegmentIntersect(local_start, local_end, i,
 													&p, &tc, &n, &tn);
 			
@@ -4952,13 +4975,13 @@ void LLVOVolume::clearRiggedVolume()
 	}
 }
 
-void LLVOVolume::updateRiggedVolume(bool force_update)
+void LLVOVolume::updateRiggedVolume(bool force_treat_as_rigged, LLRiggedVolume::FaceIndex face_index, bool rebuild_face_octrees)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 	//Update mRiggedVolume to match current animation frame of avatar. 
 	//Also update position/size in octree.  
 
-	if ((!force_update) && (!treatAsRigged()))
+    if ((!force_treat_as_rigged) && (!treatAsRigged()))
 	{
 		clearRiggedVolume();
 		
@@ -4987,10 +5010,15 @@ void LLVOVolume::updateRiggedVolume(bool force_update)
 		updateRelativeXform();
 	}
 
-	mRiggedVolume->update(skin, avatar, volume);
+    mRiggedVolume->update(skin, avatar, volume, face_index, rebuild_face_octrees);
 }
 
-void LLRiggedVolume::update(const LLMeshSkinInfo* skin, LLVOAvatar* avatar, const LLVolume* volume)
+void LLRiggedVolume::update(
+    const LLMeshSkinInfo* skin,
+    LLVOAvatar* avatar,
+    const LLVolume* volume,
+    FaceIndex face_index,
+    bool rebuild_face_octrees)
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_VOLUME;
 	bool copy = false;
@@ -5021,7 +5049,7 @@ void LLRiggedVolume::update(const LLMeshSkinInfo* skin, LLVOAvatar* avatar, cons
 		if (is_paused)
 		{
             S32 frames_paused = LLFrameTimer::getFrameCount() - avatar->getMotionController().getPausedFrame();
-            if (frames_paused > 2)
+            if (frames_paused > 1)
             {
                 return;
             }
@@ -5040,7 +5068,24 @@ void LLRiggedVolume::update(const LLMeshSkinInfo* skin, LLVOAvatar* avatar, cons
     S32 rigged_vert_count = 0;
     S32 rigged_face_count = 0;
     LLVector4a box_min, box_max;
-	for (S32 i = 0; i < volume->getNumVolumeFaces(); ++i)
+    S32 face_begin;
+    S32 face_end;
+    if (face_index == DO_NOT_UPDATE_FACES)
+    {
+        face_begin = 0;
+        face_end = 0;
+    }
+    else if (face_index == UPDATE_ALL_FACES)
+    {
+        face_begin = 0;
+        face_end = volume->getNumVolumeFaces();
+    }
+    else
+    {
+        face_begin = face_index;
+        face_end = face_begin + 1;
+    }
+    for (S32 i = face_begin; i < face_end; ++i)
 	{
 		const LLVolumeFace& vol_face = volume->getVolumeFace(i);
 		
@@ -5125,15 +5170,10 @@ void LLRiggedVolume::update(const LLMeshSkinInfo* skin, LLVOAvatar* avatar, cons
 
 			}
 
+            if (rebuild_face_octrees)
 			{
-    			delete dst_face.mOctree;
-				dst_face.mOctree = NULL;
-
-				LLVector4a size;
-				size.setSub(dst_face.mExtents[1], dst_face.mExtents[0]);
-				size.splat(size.getLength3().getF32()*0.5f);
-			
-				dst_face.createOctree(1.f);
+                dst_face.destroyOctree();
+                dst_face.createOctree();
 			}
 		}
 	}
@@ -5223,7 +5263,7 @@ bool can_batch_texture(LLFace* facep)
 		return false;
 	}
 	
-    if (facep->getTextureEntry()->getGLTFMaterial() != nullptr)
+    if (facep->getTextureEntry()->getGLTFRenderMaterial() != nullptr)
     { // PBR materials break indexed texture batching
         return false;
     }
@@ -5383,14 +5423,13 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 	
 	LLViewerTexture* tex = facep->getTexture();
 
-    
 	U8 index = facep->getTextureIndex();
 
     LLMaterial* mat = nullptr;
     
     LLUUID mat_id;
 
-    LLGLTFMaterial* gltf_mat = facep->getTextureEntry()->getGLTFMaterial();
+    auto* gltf_mat = (LLFetchedGLTFMaterial*) facep->getTextureEntry()->getGLTFRenderMaterial();
     if (gltf_mat != nullptr)
     {
         mat_id = gltf_mat->getHash(); // TODO: cache this hash
@@ -5519,21 +5558,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 
         if (gltf_mat)
         {
-            LLViewerObject* vobj = facep->getViewerObject();
-            U8 te = facep->getTEOffset();
-
-            draw_info->mTexture = vobj->getGLTFBaseColorMap(te);
-            draw_info->mNormalMap = vobj->getGLTFNormalMap(te);
-            draw_info->mSpecularMap = vobj->getGLTFMetallicRoughnessMap(te);
-            draw_info->mEmissiveMap = vobj->getGLTFEmissiveMap(te);
-            if (draw_info->mGLTFMaterial->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK)
-            {
-                draw_info->mAlphaMaskCutoff = gltf_mat->mAlphaCutoff * gltf_mat->mBaseColor.mV[3];
-            }
-            else
-            {
-                draw_info->mAlphaMaskCutoff = 1.f;
-            }
+            // nothing to do, render pools will reference the GLTF material
         }
         else if (mat)
 		{
@@ -5793,6 +5818,9 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 				continue;
 			}
 
+            // apply any pending material overrides
+            gGLTFMaterialList.applyQueuedOverrides(vobj);
+
             std::string vobj_name = llformat("Vol%p", vobj);
 
             bool is_mesh = vobj->isMesh();
@@ -5856,7 +5884,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
             {
                 avatar->addAttachmentOverridesForObject(vobj, NULL, false);
             }
-            
+
             // Standard rigged mesh attachments: 
 			bool rigged = !vobj->isAnimatedObject() && skinInfo && vobj->isAttachment();
             // Animated objects. Have to check for isRiggedMesh() to
@@ -5887,7 +5915,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
                 bool is_pbr = false;
 #endif
 #else
-                LLGLTFMaterial *gltf_mat = facep->getTextureEntry()->getGLTFMaterial();
+                LLGLTFMaterial *gltf_mat = facep->getTextureEntry()->getGLTFRenderMaterial();
                 bool is_pbr = gltf_mat != nullptr;
 #endif
 
@@ -5915,7 +5943,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
                     if (facep->isState(LLFace::RIGGED))
                     { 
                         //face is not rigged but used to be, remove from rigged face pool
-                        LLDrawPoolAvatar* pool = (LLDrawPoolAvatar*) facep->getPool();
+                        LLDrawPoolAvatar* pool = (LLDrawPoolAvatar*)facep->getPool();
                         if (pool)
                         {
                             pool->removeFace(facep);
@@ -5958,7 +5986,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 					U32 type = gPipeline.getPoolTypeFromTE(te, tex);
                     if (is_pbr && gltf_mat && gltf_mat->mAlphaMode != LLGLTFMaterial::ALPHA_MODE_BLEND)
                     {
-                        type = LLDrawPool::POOL_PBR_OPAQUE;
+                        type = LLDrawPool::POOL_GLTF_PBR;
                     }
                     else
 					if (type != LLDrawPool::POOL_ALPHA && force_simple)
@@ -6025,7 +6053,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 						if (gPipeline.canUseWindLightShadersOnObjects()
 							&& LLPipeline::sRenderBump)
 						{
-                            LLGLTFMaterial* gltf_mat = te->getGLTFMaterial();
+                            LLGLTFMaterial* gltf_mat = te->getGLTFRenderMaterial();
 
 							if (LLPipeline::sRenderDeferred && 
                                 (gltf_mat != nullptr || (te->getMaterialParams().notNull()  && !te->getMaterialID().isNull())))
@@ -6117,7 +6145,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 			else
 			{
 				drawablep->clearState(LLDrawable::RIGGED);
-                vobj->updateRiggedVolume();
+                vobj->updateRiggedVolume(false);
 			}
 		}
 	}
@@ -6227,7 +6255,7 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
 			{
 				LLDrawable* drawablep = (LLDrawable*)(*drawable_iter)->getDrawable();
 
-				if (drawablep && !drawablep->isDead() && drawablep->isState(LLDrawable::REBUILD_ALL) && !drawablep->isState(LLDrawable::RIGGED) )
+				if (drawablep && !drawablep->isDead() && drawablep->isState(LLDrawable::REBUILD_ALL))
 				{
 					LLVOVolume* vobj = drawablep->getVOVolume();
 					
@@ -6261,8 +6289,6 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
 							LLVertexBuffer* buff = face->getVertexBuffer();
 							if (buff)
 							{
-								llassert(!face->isState(LLFace::RIGGED));
-
 								if (!face->getGeometryVolume(*volume, face->getTEOffset(), 
 									vobj->getRelativeXform(), vobj->getRelativeXformInvTrans(), face->getGeomIndex()))
 								{ //something's gone wrong with the vertex buffer accounting, rebuild this group 
@@ -6390,7 +6416,6 @@ struct CompareBatchBreakerRigged
         }
     }
 };
-
 
 U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace** faces, U32 face_count, BOOL distance_sort, BOOL batch_textures, BOOL rigged)
 {
@@ -6730,7 +6755,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 
 			BOOL is_alpha = (facep->getPoolType() == LLDrawPool::POOL_ALPHA) ? TRUE : FALSE;
 		
-            LLGLTFMaterial* gltf_mat = te->getGLTFMaterial();
+            LLGLTFMaterial* gltf_mat = te->getGLTFRenderMaterial();
 
             LLMaterial* mat = nullptr;
             bool can_be_shiny = false;
@@ -6765,7 +6790,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
                     if (gltf_mat->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_BLEND)
                         registerFace(group, facep, LLRenderPass::PASS_ALPHA);
                     else
-                        registerFace(group, facep, LLRenderPass::PASS_PBR_OPAQUE);
+                        registerFace(group, facep, LLRenderPass::PASS_GLTF_PBR);
                 }
                 else
 				// do NOT use 'fullbright' for this logic or you risk sending

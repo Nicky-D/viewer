@@ -31,6 +31,7 @@
 #include "llgl.h"
 #include "llrender.h"
 #include "llglheaders.h"
+#include "llgltfmateriallist.h"
 #include "llagent.h"
 #include "llagentcamera.h"
 #include "llviewercontrol.h"
@@ -254,7 +255,7 @@ static LLTrace::BlockTimerStatHandle FTM_IMAGE_UPDATE("Update Images");
 static LLTrace::BlockTimerStatHandle FTM_IMAGE_UPDATE_CLASS("Class");
 static LLTrace::BlockTimerStatHandle FTM_IMAGE_UPDATE_BUMP("Image Update Bump");
 static LLTrace::BlockTimerStatHandle FTM_IMAGE_UPDATE_LIST("List");
-static LLTrace::BlockTimerStatHandle FTM_IMAGE_UPDATE_DELETE("Delete");
+static LLTrace::BlockTimerStatHandle FTM_MATERIALS_FLUSH("GLTF Materials Cleanup");
 static LLTrace::BlockTimerStatHandle FTM_RESIZE_WINDOW("Resize Window");
 static LLTrace::BlockTimerStatHandle FTM_HUD_UPDATE("HUD Update");
 static LLTrace::BlockTimerStatHandle FTM_DISPLAY_UPDATE_GEOM("Update Geom");
@@ -807,12 +808,11 @@ void display(BOOL rebuild, F32 zoom_factor, int subfield, BOOL for_snapshot)
 				gTextureList.updateImages(max_image_decode_time);
 			}
 
-			/*{
-				LL_RECORD_BLOCK_TIME(FTM_IMAGE_UPDATE_DELETE);
-				//remove dead textures from GL
-				LLImageGL::deleteDeadTextures();
-				stop_glerror();
-			}*/
+			{
+				LL_RECORD_BLOCK_TIME(FTM_MATERIALS_FLUSH);
+				//remove dead gltf materials
+                gGLTFMaterialList.flushMaterials();
+			}
 		}
 
 		LLGLState::checkStates();
@@ -1597,6 +1597,7 @@ void render_ui_2d()
 	// render outline for HUD
 	if (isAgentAvatarValid() && gAgentCamera.mHUDCurZoom < 0.98f)
 	{
+        gUIProgram.bind();
 		gGL.pushMatrix();
 		S32 half_width = (gViewerWindow->getWorldViewWidthScaled() / 2);
 		S32 half_height = (gViewerWindow->getWorldViewHeightScaled() / 2);
@@ -1607,6 +1608,7 @@ void render_ui_2d()
 		gGL.color4fv(LLColor4::white.mV);
 		gl_rect_2d(-half_width, half_height, half_width, -half_height, FALSE);
 		gGL.popMatrix();
+        gUIProgram.unbind();
 		stop_glerror();
 	}
 	

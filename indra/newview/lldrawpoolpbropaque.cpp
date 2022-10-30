@@ -1,6 +1,6 @@
 /** 
  * @file lldrawpoolpbropaque.cpp
- * @brief LLDrawPoolPBROpaque class implementation
+ * @brief LLDrawPoolGLTFPBR class implementation
  *
  * $LicenseInfo:firstyear=2022&license=viewerlgpl$
  * Second Life Viewer Source Code
@@ -31,46 +31,16 @@
 #include "llviewershadermgr.h"
 #include "pipeline.h"
 
-LLDrawPoolPBROpaque::LLDrawPoolPBROpaque() :
-    LLRenderPass(POOL_PBR_OPAQUE)
+LLDrawPoolGLTFPBR::LLDrawPoolGLTFPBR() :
+    LLRenderPass(POOL_GLTF_PBR)
 {
 }
 
-void LLDrawPoolPBROpaque::prerender()
+void LLDrawPoolGLTFPBR::renderDeferred(S32 pass)
 {
-    mShaderLevel = LLViewerShaderMgr::instance()->getShaderLevel(LLViewerShaderMgr::SHADER_OBJECT); 
-}
-
-// Forward
-void LLDrawPoolPBROpaque::beginRenderPass(S32 pass)
-{
-}
-
-void LLDrawPoolPBROpaque::endRenderPass( S32 pass )
-{
-}
-
-void LLDrawPoolPBROpaque::render(S32 pass)
-{
-}
-
-void LLDrawPoolPBROpaque::renderDeferred(S32 pass)
-{
-    if (!gPipeline.hasRenderType(LLPipeline::RENDER_TYPE_MATERIALS))
-    {
-         return;
-    }
-
-    const U32 type = LLPipeline::RENDER_TYPE_PASS_PBR_OPAQUE;
-    if (!gPipeline.hasRenderType(type))
-    {
-        return;
-    }
+    const U32 type = LLPipeline::RENDER_TYPE_PASS_GLTF_PBR;
 
     gGL.flush();
-
-    LLGLDisable blend(GL_BLEND);
-    LLGLDisable alpha_test(GL_ALPHA_TEST);
 
     LLVOAvatar* lastAvatar = nullptr;
     U64 lastMeshId = 0;
@@ -78,7 +48,7 @@ void LLDrawPoolPBROpaque::renderDeferred(S32 pass)
     for (int i = 0; i < 2; ++i)
     {
         bool rigged = (i == 1);
-        LLGLSLShader* shader = &gDeferredPBROpaqueProgram;
+        LLGLSLShader* shader = LLPipeline::sShadowRender ? &gDeferredShadowAlphaMaskProgram : &gDeferredPBROpaqueProgram;
         U32 vertex_data_mask = getVertexDataMask();
 
         if (rigged)
@@ -95,57 +65,10 @@ void LLDrawPoolPBROpaque::renderDeferred(S32 pass)
         for (LLCullResult::drawinfo_iterator i = begin; i != end; ++i)
         {
             LLDrawInfo* pparams = *i;
-            LLGLTFMaterial *mat = pparams->mGLTFMaterial;
-
-            // glTF 2.0 Specification 3.9.4. Alpha Coverage
-            // mAlphaCutoff is only valid for LLGLTFMaterial::ALPHA_MODE_MASK
-            F32 min_alpha = -1.0;
-            if (mat->mAlphaMode == LLGLTFMaterial::ALPHA_MODE_MASK)
-            {
-                min_alpha = mat->mAlphaCutoff;
-            }
-            shader->uniform1f(LLShaderMgr::MINIMUM_ALPHA, min_alpha);
-
-            if (pparams->mTexture.notNull())
-            {
-                gGL.getTexUnit(0)->bindFast(pparams->mTexture); // diffuse
-            }
-            else
-            {
-                gGL.getTexUnit(0)->bindFast(LLViewerFetchedTexture::sWhiteImagep);
-            }
-
-            if (pparams->mNormalMap)
-            {
-                shader->bindTexture(LLShaderMgr::BUMP_MAP, pparams->mNormalMap);
-            }
-            else
-            {
-                shader->bindTexture(LLShaderMgr::BUMP_MAP, LLViewerFetchedTexture::sFlatNormalImagep);
-            }
-
-            if (pparams->mSpecularMap)
-            {
-                shader->bindTexture(LLShaderMgr::SPECULAR_MAP, pparams->mSpecularMap); // PBR linear packed Occlusion, Roughness, Metal.
-            }
-            else
-            {
-                shader->bindTexture(LLShaderMgr::SPECULAR_MAP, LLViewerFetchedTexture::sWhiteImagep);
-            }
-
-            if (pparams->mEmissiveMap)
-            {
-                shader->bindTexture(LLShaderMgr::EMISSIVE_MAP, pparams->mEmissiveMap);  // PBR sRGB Emissive
-            }
-            else
-            {
-                shader->bindTexture(LLShaderMgr::EMISSIVE_MAP, LLViewerFetchedTexture::sWhiteImagep);
-            }
-
-            shader->uniform1f(LLShaderMgr::ROUGHNESS_FACTOR, pparams->mGLTFMaterial->mRoughnessFactor);
-            shader->uniform1f(LLShaderMgr::METALLIC_FACTOR, pparams->mGLTFMaterial->mMetallicFactor);
-            shader->uniform3fv(LLShaderMgr::EMISSIVE_COLOR, 1, pparams->mGLTFMaterial->mEmissiveColor.mV);
-
+            auto& mat = pparams->mGLTFMaterial;
+            
+            mat->bind(shader);
+            
             LLGLDisable cull_face(mat->mDoubleSided ? GL_CULL_FACE : 0);
 
             bool tex_setup = false;
@@ -185,3 +108,9 @@ void LLDrawPoolPBROpaque::renderDeferred(S32 pass)
 
     LLGLSLShader::sCurBoundShaderPtr->unbind();
 }
+
+void LLDrawPoolGLTFPBR::renderShadow(S32 pass)
+{
+    renderDeferred(pass);
+}
+

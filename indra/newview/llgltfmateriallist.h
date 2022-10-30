@@ -26,26 +26,52 @@
 
 #pragma once
 
+#include "llfetchedgltfmaterial.h"
 #include "llgltfmaterial.h"
 #include "llpointer.h"
 
 #include <unordered_map>
 
+class LLFetchedGLTFMaterial;
+
 class LLGLTFMaterialList
 {
 public:
+    static const LLUUID BLANK_MATERIAL_ASSET_ID;
+
     LLGLTFMaterialList() {}
 
-    typedef std::unordered_map<LLUUID, LLPointer<LLGLTFMaterial > > List;
-    List mList;
 
     LLGLTFMaterial* getMaterial(const LLUUID& id);
 
-    void addMaterial(const LLUUID& id, LLGLTFMaterial* material);
+    void addMaterial(const LLUUID& id, LLFetchedGLTFMaterial* material);
     void removeMaterial(const LLUUID& id);
+
+    void flushMaterials();
 
     static void registerCallbacks();
 
+    // apply given override data via given cap url
+    //  cap_url -- should be gAgent.getRegionCapability("ModifyMaterialParams")
+    //  overrides -- LLSD map in the format
+    //    "object_id": LLUUID - object to be modified
+    //    "side": integer - index of face to be modified
+    //    "gltf_json" : string - GLTF compliant json of override data (optional, if omitted any existing override data will be cleared)
+    static void modifyMaterialCoro(std::string cap_url, LLSD overrides);
+    // save an override update for later (for example, if an override arrived for an unknown object)
+    void queueOverrideUpdate(const LLUUID& id, S32 side, LLGLTFMaterial* override_data);
+
+    void applyQueuedOverrides(LLViewerObject* obj);
+
+private:
+    typedef std::unordered_map<LLUUID, LLPointer<LLFetchedGLTFMaterial > > uuid_mat_map_t;
+    uuid_mat_map_t mList;
+
+    typedef std::vector<LLPointer<LLGLTFMaterial> > override_list_t;
+    typedef std::unordered_map<LLUUID, override_list_t > queued_override_map_t;
+    queued_override_map_t mQueuedOverrides;
+
+    LLUUID mLastUpdateKey;
 };
 
 extern LLGLTFMaterialList gGLTFMaterialList;

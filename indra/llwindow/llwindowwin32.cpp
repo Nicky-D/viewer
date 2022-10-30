@@ -48,8 +48,6 @@
 #include "llthreadsafequeue.h"
 #include "stringize.h"
 #include "llframetimer.h"
-#include "commoncontrol.h" // TODO: Remove after testing
-#include "llsd.h" // TODO: Remove after testing
 
 // System includes
 #include <commdlg.h>
@@ -420,9 +418,7 @@ struct LLWindowWin32::LLWindowWin32Thread : public LL::ThreadPool
     // best guess at available video memory in MB
     std::atomic<U32> mAvailableVRAM;
 
-    bool mTryUseDXGIAdapter; // TODO: Remove after testing
     IDXGIAdapter3* mDXGIAdapter = nullptr;
-    bool mTryUseD3DDevice; // TODO: Remove after testing
     LPDIRECT3D9 mD3D = nullptr;
     LPDIRECT3DDEVICE9 mD3DDevice = nullptr;
 };
@@ -904,21 +900,20 @@ void LLWindowWin32::close()
 	// Restore gamma to the system values.
 	restoreGamma();
 
-	if (mhDC)
-	{
-		if (!ReleaseDC(mWindowHandle, mhDC))
-		{
-			LL_WARNS("Window") << "Release of ghDC failed" << LL_ENDL;
-		}
-		mhDC = NULL;
-	}
-
 	LL_DEBUGS("Window") << "Destroying Window" << LL_ENDL;
 
     mWindowThread->post([=]()
         {
             if (IsWindow(mWindowHandle))
             {
+                if (mhDC)
+                {
+                    if (!ReleaseDC(mWindowHandle, mhDC))
+                    {
+                        LL_WARNS("Window") << "Release of ghDC failed!" << LL_ENDL;
+                    }
+                }
+
                 // Make sure we don't leave a blank toolbar button.
                 ShowWindow(mWindowHandle, SW_HIDE);
 
@@ -944,6 +939,7 @@ void LLWindowWin32::close()
     // Even though the above lambda might not yet have run, we've already
     // bound mWindowHandle into it by value, which should suffice for the
     // operations we're asking. That's the last time WE should touch it.
+    mhDC = NULL;
     mWindowHandle = NULL;
     mWindowThread->close();
 }
@@ -1536,12 +1532,10 @@ const	S32   max_format  = (S32)num_formats - 1;
 			{
 				wglDeleteContext (mhRC);							// Release The Rendering Context
 				mhRC = 0;										// Zero The Rendering Context
-
 			}
-			ReleaseDC (mWindowHandle, mhDC);						// Release The Device Context
-			mhDC = 0;											// Zero The Device Context
 		}
 
+        // will release and recreate mhDC, mWindowHandle
 		recreateWindow(window_rect, dw_ex_style, dw_style);
         
         RECT rect;
@@ -1691,7 +1685,8 @@ const	S32   max_format  = (S32)num_formats - 1;
 
 void LLWindowWin32::recreateWindow(RECT window_rect, DWORD dw_ex_style, DWORD dw_style)
 {
-    auto oldHandle = mWindowHandle;
+    auto oldWindowHandle = mWindowHandle;
+    auto oldDCHandle = mhDC;
 
     // zero out mWindowHandle and mhDC before destroying window so window
     // thread falls back to peekmessage
@@ -1703,7 +1698,8 @@ void LLWindowWin32::recreateWindow(RECT window_rect, DWORD dw_ex_style, DWORD dw
     auto window_work =
         [this,
          self=mWindowThread,
-         oldHandle,
+         oldWindowHandle,
+         oldDCHandle,
          // bind CreateWindowEx() parameters by value instead of
          // back-referencing LLWindowWin32 members
          windowClassName=mWindowClassName,
@@ -1719,11 +1715,20 @@ void LLWindowWin32::recreateWindow(RECT window_rect, DWORD dw_ex_style, DWORD dw
             self->mWindowHandle = 0;
             self->mhDC = 0;
 
-            // important to call DestroyWindow() from the window thread
-            if (oldHandle && !destroy_window_handler(oldHandle))
+            if (oldWindowHandle)
             {
-                LL_WARNS("Window") << "Failed to properly close window before recreating it!"
-                                   << LL_ENDL;
+                if (oldDCHandle && !ReleaseDC(oldWindowHandle, oldDCHandle))
+                {
+                    LL_WARNS("Window") << "Failed to ReleaseDC" << LL_ENDL;
+                }
+
+                // important to call DestroyWindow() from the window thread
+                if (!destroy_window_handler(oldWindowHandle))
+                {
+
+                    LL_WARNS("Window") << "Failed to properly close window before recreating it!"
+                        << LL_ENDL;
+                }
             }
 
             auto handle = CreateWindowEx(dw_ex_style,
@@ -1761,7 +1766,7 @@ void LLWindowWin32::recreateWindow(RECT window_rect, DWORD dw_ex_style, DWORD dw
         };
     // But how we pass window_work to the window thread depends on whether we
     // already have a window handle.
-    if (! oldHandle)
+    if (!oldWindowHandle)
     {
         // Pass window_work using the WorkQueue: without an existing window
         // handle, the window thread can't call GetMessage().
@@ -1774,7 +1779,7 @@ void LLWindowWin32::recreateWindow(RECT window_rect, DWORD dw_ex_style, DWORD dw
         // PostMessage(oldHandle) because oldHandle won't be destroyed until
         // the window thread has retrieved and executed window_work.
         LL_DEBUGS("Window") << "posting window_work to message queue" << LL_ENDL;
-        mWindowThread->Post(oldHandle, window_work);
+        mWindowThread->Post(oldWindowHandle, window_work);
     }
 
     auto future = promise.get_future();
@@ -4571,14 +4576,6 @@ U32 LLWindowWin32::getAvailableVRAMMegabytes()
 inline LLWindowWin32::LLWindowWin32Thread::LLWindowWin32Thread()
     : ThreadPool("Window Thread", 1, MAX_QUEUE_SIZE)
 {
-    const LLSD skipDXGI{ LL::CommonControl::get("Global", "DisablePrimaryGraphicsMemoryAccounting") }; // TODO: Remove after testing
-    LL_WARNS() << "DisablePrimaryGraphicsMemoryAccounting: " << skipDXGI << ", as boolean: " << skipDXGI.asBoolean() << LL_ENDL;
-    mTryUseDXGIAdapter = !skipDXGI.asBoolean();
-    LL_WARNS() << "mTryUseDXGIAdapter: " << mTryUseDXGIAdapter << LL_ENDL;
-    const LLSD skipD3D{ LL::CommonControl::get("Global", "DisableSecondaryGraphicsMemoryAccounting") }; // TODO: Remove after testing
-    LL_WARNS() << "DisableSecondaryGraphicsMemoryAccounting: " << skipD3D << ", as boolean: " << skipD3D.asBoolean() << LL_ENDL;
-    mTryUseD3DDevice = !skipD3D.asBoolean();
-    LL_WARNS() << "mTryUseD3DDevice: " << mTryUseD3DDevice << LL_ENDL;
     ThreadPool::start();
 }
 
@@ -4695,7 +4692,7 @@ void debugEnumerateGraphicsAdapters()
 
 void LLWindowWin32::LLWindowWin32Thread::initDX()
 {
-    if (mDXGIAdapter == NULL && mTryUseDXGIAdapter)
+    if (mDXGIAdapter == NULL)
     {
         debugEnumerateGraphicsAdapters();
 
@@ -4729,7 +4726,7 @@ void LLWindowWin32::LLWindowWin32Thread::initDX()
 
 void LLWindowWin32::LLWindowWin32Thread::initD3D()
 {
-    if (mDXGIAdapter == NULL && mD3DDevice == NULL && mTryUseD3DDevice && mWindowHandle != 0)
+    if (mDXGIAdapter == NULL && mD3DDevice == NULL && mWindowHandle != 0)
     {
         mD3D = Direct3DCreate9(D3D_SDK_VERSION);
         
