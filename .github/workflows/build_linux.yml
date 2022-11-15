@@ -26,18 +26,8 @@ jobs:
         continue-on-error: true
         run: sudo apt install -y python-is-python3
 
-      - name: Try install python setuptools
-        continue-on-error: true
-        run: pip install setuptools
-
       - name: Install ninja
         run: pip3 install ninja
-
-      - name: Install llbase # For the moment needed for viewer_manifest.py
-        run: pip3 install llbase
-
-      - name: install autobuild
-        run: pip3 install git+https://github.com/Nicky-D/autobuild@main_nd
 
       - name: Get the code
         uses: actions/checkout@v3
