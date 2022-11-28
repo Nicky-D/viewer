@@ -85,6 +85,7 @@ if (LINUX)
       Fontconfig::Fontconfig 
       Freetype::Freetype
       libuuid.a
+      dl
       )
 
 	set( SDL_SOURCE_DIR SDL1 )
