@@ -68,7 +68,7 @@ set(viewer_HEADER_FILES
 # Sort by high-level to low-level
 if (LINUX)
   FetchContent_Declare( ndGPUInfo
-    GIT_REPOSITORY git@github.com:Nicky-D/ndGPUInfo.git
+    GIT_REPOSITORY https://github.com/Nicky-D/ndGPUInfo.git
     GIT_TAG main)
   FetchContent_MakeAvailable( ndGPUInfo )
   
