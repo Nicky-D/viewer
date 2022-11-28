@@ -54,6 +54,7 @@ public:
 	bool hasSrgb;
     bool encodesNormal; // include: shaders\class1\environment\encodeNormF.glsl
     bool isDeferred;
+    bool hasScreenSpaceReflections;
     bool hasIndirect;
 	S32 mIndexedTextureChannels;
 	bool disableTextureIndex;
@@ -180,6 +181,7 @@ public:
 	void mapUniform(GLint index, const std::vector<LLStaticHashedString> *);
 	void uniform1i(U32 index, GLint i);
 	void uniform1f(U32 index, GLfloat v);
+    void fastUniform1f(U32 index, GLfloat v);
 	void uniform2f(U32 index, GLfloat x, GLfloat y);
 	void uniform3f(U32 index, GLfloat x, GLfloat y, GLfloat z);
 	void uniform4f(U32 index, GLfloat x, GLfloat y, GLfloat z, GLfloat w);
@@ -299,7 +301,7 @@ public:
     // this pointer should be set to whichever shader represents this shader's rigged variant
     LLGLSLShader* mRiggedVariant = nullptr;
 
-	#ifdef LL_PROFILER_ENABLE_TRACY_OPENGL
+	#ifdef LL_PROFILER_ENABLE_RENDER_DOC
     void setLabel(const char* label);
 	#endif
 
@@ -314,7 +316,7 @@ extern LLGLSLShader			gSolidColorProgram;
 //Alpha mask shader (declared here so llappearance can access properly)
 extern LLGLSLShader			gAlphaMaskProgram;
 
-#ifdef LL_PROFILER_ENABLE_TRACY_OPENGL
+#ifdef LL_PROFILER_ENABLE_RENDER_DOC
 #define LL_SET_SHADER_LABEL(shader) shader.setLabel(#shader)
 #else
 #define LL_SET_SHADER_LABEL(shader, label)

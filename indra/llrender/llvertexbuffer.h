@@ -182,10 +182,6 @@ public:
         TYPE_WEIGHT4,           //  "weight4"
         TYPE_CLOTHWEIGHT,       //  "clothing"
         TYPE_TEXTURE_INDEX,     //  "texture_index"
-        TYPE_BASECOLOR_TEXCOORD,          // "basecolor_texcoord" (GLTF)
-        TYPE_NORMAL_TEXCOORD,             // "normal_texcoord" (GLTF)
-        TYPE_METALLIC_ROUGHNESS_TEXCOORD, // "metallic_roughness_texcoord" (GLTF)
-        TYPE_EMISSIVE_TEXCOORD,           // "emissive_texcoord" (GLTF)
         TYPE_MAX,   // TYPE_MAX is the size/boundary marker for attributes that go in the vertex buffer
         TYPE_INDEX,	// TYPE_INDEX is beyond _MAX because it lives in a separate (index) buffer	
     };
@@ -205,10 +201,6 @@ public:
 		MAP_WEIGHT4 = (1<<TYPE_WEIGHT4),
 		MAP_CLOTHWEIGHT = (1<<TYPE_CLOTHWEIGHT),
 		MAP_TEXTURE_INDEX = (1<<TYPE_TEXTURE_INDEX),
-        MAP_BASECOLOR_TEXCOORD = (1<<TYPE_BASECOLOR_TEXCOORD),
-        MAP_NORMAL_TEXCOORD = (1<<TYPE_NORMAL_TEXCOORD),
-        MAP_METALLIC_ROUGHNESS_TEXCOORD = (1<<TYPE_METALLIC_ROUGHNESS_TEXCOORD),
-        MAP_EMISSIVE_TEXCOORD = (1<<TYPE_EMISSIVE_TEXCOORD),
 	};
 	
 protected:
@@ -311,7 +303,7 @@ public:
 	//for debugging, validate data in given range is valid
 	void validateRange(U32 start, U32 end, U32 count, U32 offset) const;
 
-	#ifdef LL_PROFILER_ENABLE_TRACY_OPENGL
+	#ifdef LL_PROFILER_ENABLE_RENDER_DOC
 	void setLabel(const char* label);
 	#endif
 	
@@ -384,7 +376,7 @@ public:
 	static U32 sSetCount;
 };
 
-#ifdef LL_PROFILER_ENABLE_TRACY_OPENGL
+#ifdef LL_PROFILER_ENABLE_RENDER_DOC
 #define LL_LABEL_VERTEX_BUFFER(buf, name) buf->setLabel(name)
 #else
 #define LL_LABEL_VERTEX_BUFFER(buf, name)

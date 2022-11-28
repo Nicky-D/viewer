@@ -1185,31 +1185,6 @@ class LLAdvancedCheckPeriodicSlowFrame : public view_listener_t
 };
 
 
-
-////////////////
-// FRAME TEST //
-////////////////
-
-
-class LLAdvancedToggleFrameTest : public view_listener_t
-{
-	bool handleEvent(const LLSD& userdata)
-	{
-		LLPipeline::sRenderFrameTest = !(LLPipeline::sRenderFrameTest);
-		return true;
-	}
-};
-
-class LLAdvancedCheckFrameTest : public view_listener_t
-{
-	bool handleEvent(const LLSD& userdata)
-	{
-		bool new_value = LLPipeline::sRenderFrameTest;
-		return new_value;
-	}
-};
-
-
 ///////////////////////////
 // SELECTED TEXTURE INFO //
 // 
@@ -2832,6 +2807,11 @@ struct LLSelectedTEGetmatIdAndPermissions : public LLSelectedTEFunctor
 
 bool enable_object_edit_gltf_material()
 {
+    if (!LLMaterialEditor::capabilitiesAvailable())
+    {
+        return false;
+    }
+
     LLSelectedTEGetmatIdAndPermissions func;
     LLSelectMgr::getInstance()->getSelection()->applyToTEs(&func);
     return func.mCanModify && func.mMaterialId.notNull();
@@ -2839,6 +2819,11 @@ bool enable_object_edit_gltf_material()
 
 bool enable_object_save_gltf_material()
 {
+    if (!LLMaterialEditor::capabilitiesAvailable())
+    {
+        return false;
+    }
+
     LLSelectedTEGetmatIdAndPermissions func;
     LLSelectMgr::getInstance()->getSelection()->applyToTEs(&func);
     return func.mCanCopy && func.mMaterialId.notNull();
@@ -9438,8 +9423,6 @@ void initialize_menus()
 	view_listener_t::addMenu(new LLAdvancedCheckRandomizeFramerate(), "Advanced.CheckRandomizeFramerate");
 	view_listener_t::addMenu(new LLAdvancedTogglePeriodicSlowFrame(), "Advanced.TogglePeriodicSlowFrame");
 	view_listener_t::addMenu(new LLAdvancedCheckPeriodicSlowFrame(), "Advanced.CheckPeriodicSlowFrame");
-	view_listener_t::addMenu(new LLAdvancedToggleFrameTest(), "Advanced.ToggleFrameTest");
-	view_listener_t::addMenu(new LLAdvancedCheckFrameTest(), "Advanced.CheckFrameTest");
 	view_listener_t::addMenu(new LLAdvancedHandleAttachedLightParticles(), "Advanced.HandleAttachedLightParticles");
 	view_listener_t::addMenu(new LLAdvancedCheckRenderShadowOption(), "Advanced.CheckRenderShadowOption");
 	view_listener_t::addMenu(new LLAdvancedClickRenderShadowOption(), "Advanced.ClickRenderShadowOption");

@@ -443,7 +443,20 @@ void LLDrawPoolBump::beginFullbrightShiny()
     }
 
 	LLCubeMap* cube_map = gSky.mVOSkyp ? gSky.mVOSkyp->getCubeMap() : NULL;
-	if( cube_map )
+	
+    if (cube_map)
+    {
+        // Make sure that texture coord generation happens for tex unit 1, as that's the one we use for 
+		// the cube map in the one pass shiny shaders
+		gGL.getTexUnit(1)->disable();
+		cube_channel = shader->enableTexture(LLViewerShaderMgr::ENVIRONMENT_MAP, LLTexUnit::TT_CUBE_MAP);
+		cube_map->enableTexture(cube_channel);
+		diffuse_channel = shader->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
+
+		gGL.getTexUnit(cube_channel)->bind(cube_map);
+		gGL.getTexUnit(0)->activate();
+    }
+
 	{
 		LLMatrix4 mat;
 		mat.initRows(LLVector4(gGLModelView+0),
@@ -464,7 +477,6 @@ void LLDrawPoolBump::beginFullbrightShiny()
 		LLVector4 vec4(vec, gShinyOrigin.mV[3]);
 		shader->uniform4fv(LLViewerShaderMgr::SHINY_ORIGIN, 1, vec4.mV);
 
-        cube_map->setMatrix(1);
         if (LLPipeline::sReflectionProbesEnabled)
         {
             gPipeline.bindReflectionProbes(*shader);
@@ -473,16 +485,6 @@ void LLDrawPoolBump::beginFullbrightShiny()
         {
             gPipeline.setEnvMat(*shader);
         }
-
-		// Make sure that texture coord generation happens for tex unit 1, as that's the one we use for 
-		// the cube map in the one pass shiny shaders
-		gGL.getTexUnit(1)->disable();
-		cube_channel = shader->enableTexture(LLViewerShaderMgr::ENVIRONMENT_MAP, LLTexUnit::TT_CUBE_MAP);
-		cube_map->enableTexture(cube_channel);
-		diffuse_channel = shader->enableTexture(LLViewerShaderMgr::DIFFUSE_MAP);
-
-		gGL.getTexUnit(cube_channel)->bind(cube_map);
-		gGL.getTexUnit(0)->activate();
 	}
 
 	if (mShaderLevel > 1)
@@ -497,7 +499,6 @@ void LLDrawPoolBump::renderFullbrightShiny()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWPOOL; //LL_RECORD_BLOCK_TIME(FTM_RENDER_SHINY);
 
-	if( gSky.mVOSkyp->getCubeMap() )
 	{
 		LLGLEnable blend_enable(GL_BLEND);
 
@@ -562,8 +563,7 @@ void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, U32 mask, BOOL
 			params.mGroup->rebuildMesh();
 		}
 		params.mVertexBuffer->setBuffer(mask);
-		params.mVertexBuffer->drawRange(params.mDrawMode, params.mStart, params.mEnd, params.mCount, params.mOffset);
-		gPipeline.addTrianglesDrawn(params.mCount, params.mDrawMode);
+		params.mVertexBuffer->drawRange(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 	}
 }
 
@@ -1439,7 +1439,7 @@ void LLDrawPoolBump::pushBatch(LLDrawInfo& params, U32 mask, BOOL texture, BOOL 
 		params.mGroup->rebuildMesh();
 	}
 	params.mVertexBuffer->setBufferFast(mask);
-	params.mVertexBuffer->drawRangeFast(params.mDrawMode, params.mStart, params.mEnd, params.mCount, params.mOffset);
+	params.mVertexBuffer->drawRangeFast(LLRender::TRIANGLES, params.mStart, params.mEnd, params.mCount, params.mOffset);
 
     if (tex_setup)
 	{
