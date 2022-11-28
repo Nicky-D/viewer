@@ -81,10 +81,7 @@ if (LINUX)
       libuuid.a
       )
 
-	set( SDL_SOURCE_DIR SDL1 )
-	if(  USE_SDL2 )
-	  set (SDL_SOURCE_DIR SDL2 )
-	endif()
+	set (SDL_SOURCE_DIR SDL2 )
 	
 	list(APPEND viewer_SOURCE_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.cpp ${SDL_SOURCE_DIR}/llwindowsdl.cpp )
 	list(APPEND viewer_HEADER_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.h ${SDL_SOURCE_DIR}/llwindowsdl.h )
