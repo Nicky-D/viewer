@@ -15,10 +15,10 @@
 #include "llleap.h"
 // STL headers
 // std headers
+#include <functional>
 // external library headers
 #include <boost/assign/list_of.hpp>
 #include <boost/phoenix/core/argument.hpp>
-#include <boost/foreach.hpp>
 // other Linden headers
 #include "../test/lltut.h"
 #include "../test/namedtempfile.h"
@@ -29,7 +29,6 @@
 #include "llstring.h"
 #include "stringize.h"
 #include "StringVec.h"
-#include <functional>
 
 using boost::assign::list_of;
 
@@ -110,12 +109,12 @@ namespace tut
                    "import os\n"
                    "import sys\n"
                    "\n"
-                   // Don't forget that this Python script is written to some
-                   // temp directory somewhere! Its __file__ is useless in
-                   // finding indra/lib/python. Use our __FILE__, with
-                   // raw-string syntax to deal with Windows pathnames.
-                   "mydir = os.path.dirname(r'" << __FILE__ << "')\n"
-                   "from llbase import llsd\n"
+                   "try:\n"
+                   // new freestanding llsd package
+                   "    import llsd\n"
+                   "except ImportError:\n"
+                   // older llbase.llsd module
+                   "    from llbase import llsd\n"
                    "\n"
                    "class ProtocolError(Exception):\n"
                    "    def __init__(self, msg, data):\n"
@@ -126,26 +125,26 @@ namespace tut
                    "    pass\n"
                    "\n"
                    "def get():\n"
-                   "    hdr = ''\n"
-                   "    while ':' not in hdr and len(hdr) < 20:\n"
-                   "        hdr += sys.stdin.read(1)\n"
+                   "    hdr = []\n"
+                   "    while b':' not in hdr and len(hdr) < 20:\n"
+                   "        hdr.append(sys.stdin.buffer.read(1))\n"
                    "        if not hdr:\n"
                    "            sys.exit(0)\n"
-                   "    if not hdr.endswith(':'):\n"
+                   "    if not hdr[-1] == b':':\n"
                    "        raise ProtocolError('Expected len:data, got %r' % hdr, hdr)\n"
                    "    try:\n"
-                   "        length = int(hdr[:-1])\n"
+                   "        length = int(b''.join(hdr[:-1]))\n"
                    "    except ValueError:\n"
                    "        raise ProtocolError('Non-numeric len %r' % hdr[:-1], hdr[:-1])\n"
                    "    parts = []\n"
                    "    received = 0\n"
                    "    while received < length:\n"
-                   "        parts.append(sys.stdin.read(length - received))\n"
+                   "        parts.append(sys.stdin.buffer.read(length - received))\n"
                    "        received += len(parts[-1])\n"
-                   "    data = ''.join(parts)\n"
+                   "    data = b''.join(parts)\n"
                    "    assert len(data) == length\n"
                    "    try:\n"
-                   "        return llsd.parse(data.encode())\n"
+                   "        return llsd.parse(data)\n"
                    //   Seems the old indra.base.llsd module didn't properly
                    //   convert IndexError (from running off end of string) to
                    //   LLSDParseError.
@@ -185,11 +184,11 @@ namespace tut
                    "    return _reply\n"
                    "\n"
                    "def put(req):\n"
-                   "    sys.stdout.write(':'.join((str(len(req)), req)))\n"
+                   "    sys.stdout.buffer.write(b'%d:%b' % (len(req), req))\n"
                    "    sys.stdout.flush()\n"
                    "\n"
                    "def send(pump, data):\n"
-                   "    put(llsd.format_notation(dict(pump=pump, data=data)).decode())\n"
+                   "    put(llsd.format_notation(dict(pump=pump, data=data)))\n"
                    "\n"
                    "def request(pump, data):\n"
                    "    # we expect 'data' is a dict\n"
@@ -241,9 +240,9 @@ namespace tut
                              "import sys\n"
                              "sys.stderr.write('''Hello from Python!\n"
                              "note partial line''')\n");
+        StringVec vcommand{ PYTHON, script.getName() };
         CaptureLog log(LLError::LEVEL_INFO);
-        waitfor(LLLeap::create(get_test_name(),
-                               sv(list_of(PYTHON)(script.getName()))));
+        waitfor(LLLeap::create(get_test_name(), vcommand));
         log.messageWith("Hello from Python!");
         log.messageWith("note partial line");
     }
@@ -531,7 +530,7 @@ namespace tut
         result.ensure();
     }
 
-    struct TestLargeMessage: public std::binary_function<size_t, size_t, bool>
+    struct TestLargeMessage
     {
         TestLargeMessage(const std::string& PYTHON_, const std::string& reader_module_,
                          const std::string& test_name_):

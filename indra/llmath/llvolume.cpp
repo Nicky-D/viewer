@@ -2386,7 +2386,25 @@ bool LLVolume::unpackVolumeFaces(std::istream& is, S32 size)
 		LL_DEBUGS("MeshStreaming") << "Failed to unzip LLSD blob for LoD with code " << uzip_result << " , will probably fetch from sim again." << LL_ENDL;
 		return false;
 	}
-	
+	return unpackVolumeFacesInternal(mdl);
+}
+
+bool LLVolume::unpackVolumeFaces(U8* in_data, S32 size)
+{
+	//input data is now pointing at a zlib compressed block of LLSD
+	//decompress block
+	LLSD mdl;
+	U32 uzip_result = LLUZipHelper::unzip_llsd(mdl, in_data, size);
+	if (uzip_result != LLUZipHelper::ZR_OK)
+	{
+		LL_DEBUGS("MeshStreaming") << "Failed to unzip LLSD blob for LoD with code " << uzip_result << " , will probably fetch from sim again." << LL_ENDL;
+		return false;
+	}
+	return unpackVolumeFacesInternal(mdl);
+}
+
+bool LLVolume::unpackVolumeFacesInternal(const LLSD& mdl)
+{
 	{
 		U32 face_count = mdl.size();
 
@@ -2398,7 +2416,7 @@ bool LLVolume::unpackVolumeFaces(std::istream& is, S32 size)
 
 		mVolumeFaces.resize(face_count);
 
-		for (U32 i = 0; i < face_count; ++i)
+		for (size_t i = 0; i < face_count; ++i)
 		{
 			LLVolumeFace& face = mVolumeFaces[i];
 
@@ -5464,14 +5482,14 @@ bool LLVolumeFace::cacheOptimize()
 	new_indices.push_back(tri->mVertex[2]->mIdx);
 	tri->complete();
 
-	U32 breaks = 0;
+	//U32 breaks = 0;
 	for (U32 i = 1; i < mNumIndices/3; ++i)
 	{
 		cache.updateScores();
 		tri = cache.mBestTriangle;
 		if (!tri)
 		{
-			breaks++;
+			//breaks++;
 			for (U32 j = 0; j < triangle_data.size(); ++j)
 			{
 				if (triangle_data[j].mActive)

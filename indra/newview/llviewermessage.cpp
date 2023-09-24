@@ -99,6 +99,7 @@
 #include "llviewerobjectlist.h"
 #include "llviewerparcelmgr.h"
 #include "llviewerstats.h"
+#include "llviewerstatsrecorder.h"
 #include "llviewertexteditor.h"
 #include "llviewerthrottle.h"
 #include "llviewerwindow.h"
@@ -1907,7 +1908,7 @@ bool LLOfferInfo::inventory_offer_callback(const LLSD& notification, const LLSD&
 				log_message = LLTrans::getString("InvOfferDecline", log_message_args);
 			}
 			chat.mText = log_message;
-			if( LLMuteList::getInstance()->isMuted(mFromID ) && ! LLMuteList::getInstance()->isLinden(mFromName) )  // muting for SL-42269
+			if( LLMuteList::getInstance()->isMuted(mFromID ) && ! LLMuteList::isLinden(mFromName) )  // muting for SL-42269
 			{
 				chat.mMuted = TRUE;
 				accept_to_trash = false; // will send decline message
@@ -2426,6 +2427,7 @@ void translateSuccess(LLChat chat, LLSD toastArgs, std::string originalMsg, std:
         chat.mText += " (" + LLTranslate::removeNoTranslateTags(translation) + ")";
     }
 
+	LLTranslate::instance().logSuccess(1);
     LLNotificationsUI::LLNotificationManager::instance().onChat(chat, toastArgs);
 }
 
@@ -2435,6 +2437,7 @@ void translateFailure(LLChat chat, LLSD toastArgs, int status, const std::string
     LLStringUtil::replaceString(msg, "\n", " "); // we want one-line error messages
     chat.mText += " (" + msg + ")";
 
+	LLTranslate::instance().logFailure(1);
     LLNotificationsUI::LLNotificationManager::instance().onChat(chat, toastArgs);
 }
 
@@ -2512,7 +2515,7 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 		LLMute::flagTextChat) 
 		|| LLMuteList::getInstance()->isMuted(owner_id, LLMute::flagTextChat);
 	is_linden = chat.mSourceType != CHAT_SOURCE_OBJECT &&
-		LLMuteList::getInstance()->isLinden(from_name);
+		LLMuteList::isLinden(from_name);
 
 	if (is_muted && (chat.mSourceType == CHAT_SOURCE_OBJECT))
 	{
@@ -2669,6 +2672,7 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 		LLSD args;
 		chat.mOwnerID = owner_id;
 
+		LLTranslate::instance().logCharsSeen(mesg.size());
 		if (gSavedSettings.getBOOL("TranslateChat") && chat.mSourceType != CHAT_SOURCE_SYSTEM)
 		{
 			if (chat.mChatStyle == CHAT_STYLE_IRC)
@@ -2678,6 +2682,7 @@ void process_chat_from_simulator(LLMessageSystem *msg, void **user_data)
 			const std::string from_lang = ""; // leave empty to trigger autodetect
 			const std::string to_lang = LLTranslate::getTranslateLanguage();
 
+			LLTranslate::instance().logCharsSent(mesg.size());
             LLTranslate::translateMessage(from_lang, to_lang, mesg,
                 boost::bind(&translateSuccess, chat, args, mesg, from_lang, _1, _2),
                 boost::bind(&translateFailure, chat, args, _1, _2));
@@ -3755,31 +3760,34 @@ void process_kill_object(LLMessageSystem *mesgsys, void **user_data)
 			continue;
 		}
 
-			LLViewerObject *objectp = gObjectList.findObject(id);
-			if (objectp)
+		LLViewerObject *objectp = gObjectList.findObject(id);
+		if (objectp)
+		{
+			// Display green bubble on kill
+			if ( gShowObjectUpdates )
 			{
-				// Display green bubble on kill
-				if ( gShowObjectUpdates )
-				{
-					LLColor4 color(0.f,1.f,0.f,1.f);
-					gPipeline.addDebugBlip(objectp->getPositionAgent(), color);
-					LL_DEBUGS("MessageBlip") << "Kill blip for local " << local_id << " at " << objectp->getPositionAgent() << LL_ENDL;
-				}
-
-				// Do the kill
-				gObjectList.killObject(objectp);
+				LLColor4 color(0.f,1.f,0.f,1.f);
+				gPipeline.addDebugBlip(objectp->getPositionAgent(), color);
+				LL_DEBUGS("MessageBlip") << "Kill blip for local " << local_id << " at " << objectp->getPositionAgent() << LL_ENDL;
 			}
 
-			if(delete_object)
-			{
-				regionp->killCacheEntry(local_id);
+			// Do the kill
+			gObjectList.killObject(objectp);
+		}
+
+		if(delete_object)
+		{
+			regionp->killCacheEntry(local_id);
 		}
 
 		// We should remove the object from selection after it is marked dead by gObjectList to make LLToolGrab,
         // which is using the object, release the mouse capture correctly when the object dies.
         // See LLToolGrab::handleHoverActive() and LLToolGrab::handleHoverNonPhysical().
 		LLSelectMgr::getInstance()->removeObjectFromSelections(id);
-	}
+
+	}	// end for loop
+
+    LLViewerStatsRecorder::instance().recordObjectKills(num_objects);
 }
 
 void process_time_synch(LLMessageSystem *mesgsys, void **user_data)
@@ -5147,6 +5155,11 @@ bool attempt_standard_notification(LLMessageSystem* msgsystem)
 				LandBuyAccessBlocked_AdultsOnlyContent
 			 
 			-----------------------------------------------------------------------*/ 
+            static LLCachedControl<S32> ban_lines_mode(gSavedSettings , "ShowBanLines" , LLViewerParcelMgr::PARCEL_BAN_LINES_ON_COLLISION);
+            if (ban_lines_mode == LLViewerParcelMgr::PARCEL_BAN_LINES_ON_COLLISION)
+            {
+                LLViewerParcelMgr::getInstance()->resetCollisionTimer();
+            }
 			if (handle_special_notification(notificationID, llsdBlock))
 			{
 				return true;
@@ -5315,6 +5328,13 @@ void process_alert_message(LLMessageSystem *msgsystem, void **user_data)
 	{
 		BOOL modal = FALSE;
 		process_alert_core(message, modal);
+
+        static LLCachedControl<S32> ban_lines_mode(gSavedSettings , "ShowBanLines" , LLViewerParcelMgr::PARCEL_BAN_LINES_ON_COLLISION);
+        if (ban_lines_mode == LLViewerParcelMgr::PARCEL_BAN_LINES_ON_COLLISION
+            && message.find("Cannot enter parcel") != std::string::npos)
+        {
+            LLViewerParcelMgr::getInstance()->resetCollisionTimer();
+        }
 	}
 }
 
@@ -6284,7 +6304,7 @@ bool handle_lure_callback(const LLSD& notification, const LLSD& response)
 		// More than OFFER_RECIPIENT_LIMIT targets will overload the message
 		// producing an llerror.
 		LLSD args;
-		args["OFFERS"] = notification["payload"]["ids"].size();
+		args["OFFERS"] = LLSD::Integer(notification["payload"]["ids"].size());
 		args["LIMIT"] = static_cast<int>(OFFER_RECIPIENT_LIMIT);
 		LLNotificationsUtil::add("TooManyTeleportOffers", args);
 		return false;
@@ -6346,7 +6366,7 @@ bool teleport_request_callback(const LLSD& notification, const LLSD& response)
 	LLAvatarName av_name;
 	LLAvatarNameCache::get(from_id, &av_name);
 
-	if(LLMuteList::getInstance()->isMuted(from_id) && !LLMuteList::getInstance()->isLinden(av_name.getUserName()))
+	if(LLMuteList::getInstance()->isMuted(from_id) && !LLMuteList::isLinden(av_name.getUserName()))
 	{
 		return false;
 	}

@@ -487,9 +487,6 @@ void LLMenuItemGL::draw( void )
 	// let disabled items be highlighted, just don't draw them as such
 	if( getEnabled() && getHighlight() && !mBriefItem)
 	{
-		int debug_count = 0;
-		if (dynamic_cast<LLMenuItemCallGL*>(this))
-			debug_count++;
 		gGL.color4fv( mHighlightBackground.get().mV );
 
 		gl_rect_2d( 0, getRect().getHeight(), getRect().getWidth(), 0 );
@@ -1880,6 +1877,13 @@ bool LLMenuGL::addContextChild(LLView* view, S32 tab_group)
 	}
 
 	return false;
+}
+
+
+void LLMenuGL::deleteAllChildren()
+{
+    mItems.clear();
+    LLUICtrl::deleteAllChildren();
 }
 
 void LLMenuGL::removeChild( LLView* ctrl)
@@ -4087,25 +4091,39 @@ void LLTearOffMenu::closeTearOff()
 }
 
 LLContextMenuBranch::LLContextMenuBranch(const LLContextMenuBranch::Params& p) 
-:	LLMenuItemGL(p),
-	mBranch( p.branch()->getHandle() )
+:	LLMenuItemGL(p)
 {
-	mBranch.get()->hide();
-	mBranch.get()->setParentMenuItem(this);
+	LLContextMenu* branch = static_cast<LLContextMenu*>(p.branch);
+	if (branch)
+	{
+		mBranch = branch->getHandle();
+		branch->hide();
+		branch->setParentMenuItem(this);
+	}
+}
+
+LLContextMenuBranch::~LLContextMenuBranch()
+{
+	if (mBranch.get())
+	{
+		mBranch.get()->die();
+	}
 }
 
 // called to rebuild the draw label
 void LLContextMenuBranch::buildDrawLabel( void )
 {
+	auto menu = getBranch();
+	if (menu)
 	{
 		// default enablement is this -- if any of the subitems are
 		// enabled, this item is enabled. JC
-		U32 sub_count = mBranch.get()->getItemCount();
+		U32 sub_count = menu->getItemCount();
 		U32 i;
 		BOOL any_enabled = FALSE;
 		for (i = 0; i < sub_count; i++)
 		{
-			LLMenuItemGL* item = mBranch.get()->getItem(i);
+			LLMenuItemGL* item = menu->getItem(i);
 			item->buildDrawLabel();
 			if (item->getEnabled() && !item->getDrawTextDisabled() )
 			{
@@ -4127,13 +4145,17 @@ void LLContextMenuBranch::buildDrawLabel( void )
 
 void	LLContextMenuBranch::showSubMenu()
 {
-	LLMenuItemGL* menu_item = mBranch.get()->getParentMenuItem();
-	if (menu_item != NULL && menu_item->getVisible())
+	auto menu = getBranch();
+	if(menu)
 	{
-		S32 center_x;
-		S32 center_y;
-		localPointToScreen(getRect().getWidth(), getRect().getHeight() , &center_x, &center_y);
-		mBranch.get()->show(center_x, center_y);
+		LLMenuItemGL* menu_item = menu->getParentMenuItem();
+		if (menu_item != NULL && menu_item->getVisible())
+		{
+			S32 center_x;
+			S32 center_y;
+			localPointToScreen(getRect().getWidth(), getRect().getHeight(), &center_x, &center_y);
+			menu->show(center_x, center_y);
+		}
 	}
 }
 
@@ -4147,13 +4169,17 @@ void LLContextMenuBranch::setHighlight( BOOL highlight )
 {
 	if (highlight == getHighlight()) return;
 	LLMenuItemGL::setHighlight(highlight);
-	if( highlight )
+	auto menu = getBranch();
+	if (menu)
 	{
-		showSubMenu();
-	}
-	else
-	{
-		mBranch.get()->hide();
+		if (highlight)
+		{
+			showSubMenu();
+		}
+		else
+		{
+			menu->hide();
+		}
 	}
 }
 

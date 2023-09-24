@@ -14,26 +14,9 @@ include(00-Common)
 include(DragDrop)
 include(LLCommon)
 include(LLImage)
-include(LLMath)
-include(LLRender)
-include(LLFileSystem)
 include(LLWindow)
-include(LLXML)
 include(UI)
-
-include_directories(
-    ${LLCOMMON_INCLUDE_DIRS}
-    ${LLIMAGE_INCLUDE_DIRS}
-    ${LLMATH_INCLUDE_DIRS}
-    ${LLRENDER_INCLUDE_DIRS}
-    ${LLFILESYSTEM_INCLUDE_DIRS}
-    ${LLWINDOW_INCLUDE_DIRS}
-    ${LLXML_INCLUDE_DIRS}
-    )
-include_directories(SYSTEM
-    ${LLCOMMON_SYSTEM_INCLUDE_DIRS}
-    ${LLXML_SYSTEM_INCLUDE_DIRS}
-    )
+include(ViewerMiscLibs)
 
 set(llwindow_SOURCE_FILES
     llcursortypes.cpp
@@ -64,40 +47,26 @@ set(viewer_HEADER_FILES
     llmousehandler.h
     )
 
+set(llwindow_LINK_LIBRARIES
+        llcommon
+        llimage
+        llmath
+        llrender
+        llfilesystem
+        llxml
+        ll::glh_linear
+        ll::glext
+        ll::uilibraries
+        ll::SDL
+        )
 # Libraries on which this library depends, needed for Linux builds
 # Sort by high-level to low-level
 if (LINUX)
-  set(llwindow_LINK_LIBRARIES
-      ${LLCOMMON_LIBRARIES}
-      ${LLIMAGE_LIBRARIES}
-      ${LLMATH_LIBRARIES}
-      ${LLRENDER_LIBRARIES}
-      ${LLFILESYSTEM_LIBRARIES}
-      ${LLXML_LIBRARIES}
-      ${UI_LIBRARIES}     # for GTK
-      sdl
-      Fontconfig::Fontconfig 
-      Freetype::Freetype
-      libuuid.a
-      )
-
-	set (SDL_SOURCE_DIR SDL2 )
+  set (SDL_SOURCE_DIR SDL2 )
 	
-	list(APPEND viewer_SOURCE_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.cpp ${SDL_SOURCE_DIR}/llwindowsdl.cpp )
-	list(APPEND viewer_HEADER_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.h ${SDL_SOURCE_DIR}/llwindowsdl.h )
-  
-  if (BUILD_HEADLESS)
-    set(llwindowheadless_LINK_LIBRARIES
-        ${LLCOMMON_LIBRARIES}
-        ${LLIMAGE_LIBRARIES}
-        ${LLMATH_LIBRARIES}
-        ${LLRENDER_HEADLESS_LIBRARIES}
-        ${LLFILESYSTEM_LIBRARIES}
-        ${LLWINDOW_HEADLESS_LIBRARIES}
-        ${LLXML_LIBRARIES}
-        fontconfig          # For FCInit and other FC* functions.
-        )
-  endif (BUILD_HEADLESS)
+  list(APPEND viewer_SOURCE_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.cpp ${SDL_SOURCE_DIR}/llwindowsdl.cpp )
+  list(APPEND viewer_HEADER_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.h ${SDL_SOURCE_DIR}/llwindowsdl.h )
+
 
 endif (LINUX)
 
@@ -154,9 +123,6 @@ if (SOLARIS)
        )
 endif (SOLARIS)
 
-set_source_files_properties(${llwindow_HEADER_FILES}
-                            PROPERTIES HEADER_FILE_ONLY TRUE)
-
 if (BUILD_HEADLESS)
   set(llwindowheadless_SOURCE_FILES
        llwindowmesaheadless.cpp
@@ -192,11 +158,10 @@ if( LINUX )
 endif()
 
   target_link_libraries (llwindow ${llwindow_LINK_LIBRARIES})
+  target_include_directories(llwindow INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
   
 if (DARWIN)
   include(CMakeFindFrameworks)
   find_library(CARBON_LIBRARY Carbon)
   target_link_libraries(llwindow ${CARBON_LIBRARY})
 endif (DARWIN)
-
-

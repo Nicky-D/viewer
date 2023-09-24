@@ -84,9 +84,6 @@ public:
 		FFLOAD_WAV = 2,
 		FFLOAD_IMAGE = 3,
 		FFLOAD_ANIM = 4,
-#ifdef _CORY_TESTING
-		FFLOAD_GEOMETRY = 5,
-#endif
 		FFLOAD_XML = 6,
 		FFLOAD_SLOBJECT = 7,
 		FFLOAD_RAW = 8,
@@ -106,9 +103,6 @@ public:
 		FFSAVE_BMP = 5,
 		FFSAVE_AVI = 6,
 		FFSAVE_ANIM = 7,
-#ifdef _CORY_TESTING
-		FFSAVE_GEOMETRY = 8,
-#endif
 		FFSAVE_XML = 9,
 		FFSAVE_COLLADA = 10,
 		FFSAVE_RAW = 11,
@@ -121,8 +115,16 @@ public:
 
 	// open the dialog. This is a modal operation
 	BOOL getSaveFile( ESaveFilter filter = FFSAVE_ALL, const std::string& filename = LLStringUtil::null, bool blocking = true);
+    BOOL getSaveFileModeless(ESaveFilter filter,
+                             const std::string& filename,
+                             void (*callback)(bool, std::string&, void*),
+                             void *userdata);
 	BOOL getOpenFile( ELoadFilter filter = FFLOAD_ALL, bool blocking = true  );
+    // Todo: implement getOpenFileModeless and getMultipleOpenFilesModeless
+    // for windows and use directly instead of ugly LLFilePickerThread
+    BOOL getOpenFileModeless( ELoadFilter filter, void (*callback)(bool, std::vector<std::string> &, void*), void *userdata); // MAC only.
 	BOOL getMultipleOpenFiles( ELoadFilter filter = FFLOAD_ALL, bool blocking = true );
+    BOOL getMultipleOpenFilesModeless( ELoadFilter filter, void (*callback)(bool, std::vector<std::string> &, void*), void *userdata ); // MAC only
 
 	// Get the filename(s) found. getFirstFile() sets the pointer to
 	// the start of the structure and allows the start of iteration.
@@ -173,8 +175,15 @@ private:
 	std::vector<std::string> mFileVector;
 	
 	bool doNavChooseDialog(ELoadFilter filter);
+	bool doNavChooseDialogModeless(ELoadFilter filter,
+                                   void (*callback)(bool, std::vector<std::string>&, void*),
+                                   void *userdata);
 	bool doNavSaveDialog(ESaveFilter filter, const std::string& filename);
-    std::vector<std::string>* navOpenFilterProc(ELoadFilter filter);
+    std::unique_ptr<std::vector<std::string>> navOpenFilterProc(ELoadFilter filter);
+    bool doNavSaveDialogModeless(ESaveFilter filter,
+                                 const std::string& filename,
+                                 void (*callback)(bool, std::string&, void*),
+                                 void *userdata);
 #endif
 
 #if LL_GTK

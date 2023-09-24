@@ -45,8 +45,8 @@ class LLSearchHandler : public LLCommandHandler
 {
 public:
 	// requires trusted browser to trigger
-	LLSearchHandler() : LLCommandHandler("search", UNTRUSTED_THROTTLE) { }
-	bool handle(const LLSD& tokens, const LLSD& query_map, LLMediaCtrl* web)
+	LLSearchHandler() : LLCommandHandler("search", UNTRUSTED_CLICK_ONLY) { }
+	bool handle(const LLSD& tokens, const LLSD& query_map, const std::string& grid, LLMediaCtrl* web)
 	{
 		if (!LLUI::getInstance()->mSettingGroups["config"]->getBOOL("EnableSearch"))
 		{

@@ -39,7 +39,6 @@
 #include "llcommon.h"
 #include "llapr.h"
 #include "llerrorcontrol.h"
-#include "llerrorthread.h"
 #include "llframetimer.h"
 #include "lllivefile.h"
 #include "llmemory.h"
@@ -108,12 +107,7 @@ LLAppErrorHandler LLApp::sErrorHandler = NULL;
 BOOL LLApp::sErrorThreadRunning = FALSE;
 
 
-LLApp::LLApp() : mThreadErrorp(NULL)
-{
-	commonCtor();
-}
-
-void LLApp::commonCtor()
+LLApp::LLApp()
 {
 	// Set our status to running
 	setStatus(APP_STATUS_RUNNING);
@@ -143,12 +137,6 @@ void LLApp::commonCtor()
 	mCrashReportPipeStr = L"\\\\.\\pipe\\LLCrashReporterPipe";
 }
 
-LLApp::LLApp(LLErrorThread *error_thread) :
-	mThreadErrorp(error_thread)
-{
-	commonCtor();
-}
-
 
 LLApp::~LLApp()
 {
@@ -158,13 +146,6 @@ LLApp::~LLApp()
 	mLiveFiles.clear();
 
 	setStopped();
-	// HACK: wait for the error thread to clean itself
-	ms_sleep(20);
-	if (mThreadErrorp)
-	{
-		delete mThreadErrorp;
-		mThreadErrorp = NULL;
-	}
 
 	SUBSYSTEM_CLEANUP_DBG(LLCommon);
 }
@@ -393,27 +374,6 @@ void LLApp::setupErrorHandling(bool second_instance)
 #endif // ! LL_BUGSPLAT
 
 #endif // ! LL_WINDOWS
-
-#ifdef LL_BUGSPLAT
-    // do not start our own error thread
-#else // ! LL_BUGSPLAT
-	startErrorThread();
-#endif
-}
-
-void LLApp::startErrorThread()
-{
-	//
-	// Start the error handling thread, which is responsible for taking action
-	// when the app goes into the APP_STATUS_ERROR state
-	//
-	if(!mThreadErrorp)
-	{
-		LL_INFOS() << "Starting error thread" << LL_ENDL;
-		mThreadErrorp = new LLErrorThread();
-		mThreadErrorp->setUserData((void *) this);
-		mThreadErrorp->start();
-	}
 }
 
 void LLApp::setErrorHandler(LLAppErrorHandler handler)
@@ -476,7 +436,7 @@ void LLApp::setStatus(EAppStatus status)
 // static
 void LLApp::setError()
 {
-	// set app status to ERROR so that the LLErrorThread notices
+	// set app status to ERROR
 	setStatus(APP_STATUS_ERROR);
 }
 
@@ -851,8 +811,6 @@ void default_unix_signal_handler(int signum, siginfo_t *info, void *)
 	}
 }
 
-
-
 bool unix_post_minidump_callback(const char *dump_dir,
 					  const char *minidump_id,
 					  void *context, bool succeeded)
@@ -861,14 +819,14 @@ bool unix_post_minidump_callback(const char *dump_dir,
 	// heap allocations in a crash handler.
 	
 	// path format: <dump_dir>/<minidump_id>.dmp
-	int dirPathLength = strlen(dump_dir);
-	int idLength = strlen(minidump_id);
+	auto dirPathLength = strlen(dump_dir);
+	auto idLength = strlen(minidump_id);
 	
 	// The path must not be truncated.
 	llassert((dirPathLength + idLength + 5) <= LLApp::MAX_MINDUMP_PATH_LENGTH);
 	
 	char * path = LLApp::instance()->getMiniDumpFilename();
-	S32 remaining = LLApp::MAX_MINDUMP_PATH_LENGTH;
+	auto remaining = LLApp::MAX_MINDUMP_PATH_LENGTH;
 	strncpy(path, dump_dir, remaining);
 	remaining -= dirPathLength;
 	path += dirPathLength;

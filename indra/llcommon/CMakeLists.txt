@@ -14,19 +14,6 @@ include(ZLIBNG)
 include(URIPARSER)
 include(Tracy)
 
-include_directories(
-    ${EXPAT_INCLUDE_DIRS}
-    ${LLCOMMON_INCLUDE_DIRS}
-    ${JSONCPP_INCLUDE_DIR}
-    ${ZLIBNG_INCLUDE_DIRS}
-    ${URIPARSER_INCLUDE_DIRS}
-    ${TRACY_INCLUDE_DIR}
-    )
-
-# add_executable(lltreeiterators lltreeiterators.cpp)
-# 
-# target_link_libraries(lltreeiterators
-#     ${LLCOMMON_LIBRARIES})
 
 set(llcommon_SOURCE_FILES
     indra_constants.cpp
@@ -52,7 +39,6 @@ set(llcommon_SOURCE_FILES
     lldependencies.cpp
     lldictionary.cpp
     llerror.cpp
-    llerrorthread.cpp
     llevent.cpp
     lleventapi.cpp
     lleventcoro.cpp
@@ -118,6 +104,7 @@ set(llcommon_SOURCE_FILES
     lluriparser.cpp
     lluuid.cpp
     llworkerthread.cpp
+    hbxxh.cpp
     u64.cpp
     threadpool.cpp
     workqueue.cpp
@@ -163,7 +150,6 @@ set(llcommon_HEADER_FILES
     llendianswizzle.h
     llerror.h
     llerrorcontrol.h
-    llerrorthread.h
     llevent.h
     lleventapi.h
     lleventcoro.h
@@ -254,6 +240,7 @@ set(llcommon_HEADER_FILES
     llwin32headers.h
     llwin32headerslean.h
     llworkerthread.h
+    hbxxh.h
     lockstatic.h
     stdtypes.h
     stringize.h
@@ -271,51 +258,24 @@ if (DARWIN)
   list(APPEND llcommon_SOURCE_FILES llsys_objc.mm)
 endif (DARWIN)
 
-set_source_files_properties(${llcommon_HEADER_FILES}
-                            PROPERTIES HEADER_FILE_ONLY TRUE)
-
-if (USE_BUGSPLAT)
-  set_source_files_properties(${llcommon_SOURCE_FILES}
-    PROPERTIES COMPILE_DEFINITIONS "${BUGSPLAT_DEFINE}")
-endif (USE_BUGSPLAT)
-
 list(APPEND llcommon_SOURCE_FILES ${llcommon_HEADER_FILES})
 
-if(LLCOMMON_LINK_SHARED)
-  add_library (llcommon SHARED ${llcommon_SOURCE_FILES})
-  if(NOT ADDRESS_SIZE EQUAL 32)
-    if(WINDOWS)
-      ##add_definitions(/FIXED:NO)
-    else(WINDOWS) # not windows therefore gcc LINUX and DARWIN
-      add_definitions(-fPIC)
-    endif(WINDOWS)
-  endif(NOT ADDRESS_SIZE EQUAL 32)
-  if(WINDOWS)
-    # always generate llcommon.pdb, even for "Release" builds
-    set_target_properties(llcommon PROPERTIES LINK_FLAGS "/DEBUG")
-  endif(WINDOWS)
-  ll_stage_sharedlib(llcommon)
-else(LLCOMMON_LINK_SHARED)
-    add_library (llcommon ${llcommon_SOURCE_FILES})
-endif(LLCOMMON_LINK_SHARED)
+add_library (llcommon ${llcommon_SOURCE_FILES})
 
 target_link_libraries(
-    llcommon
-    ${APRUTIL_LIBRARIES}
-    ${APR_LIBRARIES}
-    ${EXPAT_LIBRARIES}
-    ${JSONCPP_LIBRARIES}
-    ${ZLIBNG_LIBRARIES}
-    ${WINDOWS_LIBRARIES}
-    ${BOOST_FIBER_LIBRARY}
-    ${BOOST_CONTEXT_LIBRARY}
-    ${BOOST_PROGRAM_OPTIONS_LIBRARY}
-    ${BOOST_REGEX_LIBRARY}
-    ${BOOST_SYSTEM_LIBRARY}
-    ${GOOGLE_PERFTOOLS_LIBRARIES}
-    ${URIPARSER_LIBRARIES}
-    ${TRACY_LIBRARY}
+        llcommon
+        ll::apr
+        ll::expat
+        ll::jsoncpp
+        ll::zlib-ng
+        ll::boost
+        ll::uriparser
+        ll::oslibraries
+        ll::tracy
     )
+
+target_include_directories(llcommon INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(llcommon PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_dependencies(llcommon stage_third_party_libs)
 
@@ -327,14 +287,7 @@ if (LL_TESTS)
   LL_ADD_PROJECT_UNIT_TESTS(llcommon "${llcommon_TEST_SOURCE_FILES}")
 
   #set(TEST_DEBUG on)
-  set(test_libs llcommon 
-      ${LLCOMMON_LIBRARIES} 
-      ${WINDOWS_LIBRARIES} 
-      ${GOOGLEMOCK_LIBRARIES} 
-      ${BOOST_FIBER_LIBRARY} 
-      ${BOOST_CONTEXT_LIBRARY} 
-      ${BOOST_THREAD_LIBRARY} 
-      ${BOOST_SYSTEM_LIBRARY})
+  set(test_libs llcommon)
   LL_ADD_INTEGRATION_TEST(bitpack "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(classic_callback "" "${test_libs}")
   LL_ADD_INTEGRATION_TEST(commonmisc "" "${test_libs}")

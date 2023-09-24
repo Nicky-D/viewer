@@ -208,8 +208,8 @@ static std::string get_texture_list_name()
 void LLViewerTextureList::doPrefetchImages()
 {
     LL_PROFILE_ZONE_SCOPED_CATEGORY_TEXTURE;
-	gTextureTimer.start();
-	gTextureTimer.pause();
+    gTextureTimer.start();
+    gTextureTimer.pause();
 
     // todo: do not load without getViewerAssetUrl()
     // either fail login without caps or provide this
@@ -228,6 +228,8 @@ void LLViewerTextureList::doPrefetchImages()
 
     LLViewerTextureManager::getFetchedTexture(IMG_SHOT);
     LLViewerTextureManager::getFetchedTexture(IMG_SMOKE_POOF);
+    LLViewerFetchedTexture::sSmokeImagep = LLViewerTextureManager::getFetchedTexture(IMG_SMOKE, FTT_DEFAULT, TRUE, LLGLTexture::BOOST_UI);
+    LLViewerFetchedTexture::sSmokeImagep->setNoDelete();
 
     LLStandardBumpmap::addstandard();
 
@@ -1180,6 +1182,7 @@ F32 LLViewerTextureList::updateImagesFetchTextures(F32 max_time)
 	{
 		LLViewerFetchedTexture* imagep = *iter3++;
         imagep->updateFetch();
+
 		if (min_count <= min_update_count)
 		{
 			mLastFetchKey = LLTextureKey(imagep->getID(), (ETexListType)imagep->getTextureListType());

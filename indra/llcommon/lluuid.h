@@ -55,10 +55,7 @@ public:
 	LLUUID();
 	explicit LLUUID(const char *in_string); // Convert from string.
 	explicit LLUUID(const std::string& in_string); // Convert from string.
-	LLUUID(const LLUUID &in);
-	LLUUID &operator=(const LLUUID &rhs);
-
-	~LLUUID();
+	~LLUUID() = default;
 
 	//
 	// MANIPULATORS
@@ -119,6 +116,14 @@ public:
 	U16 getCRC16() const;
 	U32 getCRC32() const;
 
+	// Returns a 64 bits digest of the UUID, by XORing its two 64 bits long
+	// words. HB
+	inline U64 getDigest64() const
+	{
+		U64* tmp = (U64*)mData;
+		return tmp[0] ^ tmp[1];
+	}
+
 	static BOOL validate(const std::string& in_string); // Validate that the UUID string is legal.
 
 	static const LLUUID null;
@@ -131,6 +136,9 @@ public:
 
 	U8 mData[UUID_BYTES];
 };
+static_assert(std::is_trivially_copyable<LLUUID>::value, "LLUUID must be trivial copy");
+static_assert(std::is_trivially_move_assignable<LLUUID>::value, "LLUUID must be trivial move");
+static_assert(std::is_standard_layout<LLUUID>::value, "LLUUID must be a standard layout type");
 
 typedef std::vector<LLUUID> uuid_vec_t;
 typedef std::set<LLUUID> uuid_set_t;
@@ -165,36 +173,22 @@ public:
 	LLAssetID makeAssetID(const LLUUID& session) const;
 };
 
-// Generate a hash of an LLUUID object using the boost hash templates. 
-template <>
-struct boost::hash<LLUUID>
-{
-    typedef LLUUID argument_type;
-    typedef std::size_t result_type;
-    result_type operator()(argument_type const& s) const
-    {
-        result_type seed(0);
-
-        for (S32 i = 0; i < UUID_BYTES; ++i)
-        {
-            boost::hash_combine(seed, s.mData[i]);
-        }
-
-        return seed;
-    }
-};
-
-// Adapt boost hash to std hash
+// std::hash implementation for LLUUID
 namespace std
 {
-    template<> struct hash<LLUUID>
-    {
-        std::size_t operator()(LLUUID const& s) const noexcept
-        {
-            return boost::hash<LLUUID>()(s);
-        }
-    };
+	template<> struct hash<LLUUID>
+	{
+		inline size_t operator()(const LLUUID& id) const noexcept
+		{
+			return (size_t)id.getDigest64();
+		}
+	};
 }
-#endif
 
+// For use with boost containers.
+inline size_t hash_value(const LLUUID& id) noexcept
+{
+	return (size_t)id.getDigest64();
+}
 
+#endif // LL_LLUUID_H

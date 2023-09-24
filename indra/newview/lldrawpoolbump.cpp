@@ -49,6 +49,7 @@
 #include "llspatialpartition.h"
 #include "llviewershadermgr.h"
 #include "llmodel.h"
+#include "llperfstats.h"
 
 //#include "llimagebmp.h"
 //#include "../tools/imdebug/imdebug.h"
@@ -78,7 +79,9 @@ static S32 cube_channel = -1;
 static S32 diffuse_channel = -1;
 static S32 bump_channel = -1;
 
-#define LL_BUMPLIST_MULTITHREADED 0 // TODO -- figure out why this doesn't work
+// Enabled after changing LLViewerTexture::mNeedsCreateTexture to an
+// LLAtomicBool; this should work just fine, now. HB
+#define LL_BUMPLIST_MULTITHREADED 1
 
 
 // static 
@@ -540,10 +543,18 @@ void LLDrawPoolBump::renderGroup(LLSpatialGroup* group, U32 type, U32 mask, BOOL
 {					
 	LLSpatialGroup::drawmap_elem_t& draw_info = group->mDrawMap[type];	
 	
-	for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k) 
+    std::unique_ptr<LLPerfStats::RecordAttachmentTime> ratPtr{};
+    for (LLSpatialGroup::drawmap_elem_t::iterator k = draw_info.begin(); k != draw_info.end(); ++k) 
 	{
 		LLDrawInfo& params = **k;
 		
+        LLViewerObject* vobj = (LLViewerObject *)params.mFace->getViewerObject();
+
+        if( vobj && vobj->isAttachment() )
+        {
+            trackAttachments( vobj, params.mFace->isState(LLFace::RIGGED), &ratPtr );
+        }
+
 		applyModelMatrix(params);
 
 		if (params.mGroup)
@@ -708,9 +719,20 @@ void LLDrawPoolBump::renderDeferred(S32 pass)
         LLVOAvatar* avatar = nullptr;
         U64 skin = 0;
 
+        std::unique_ptr<LLPerfStats::RecordAttachmentTime> ratPtr{};
         for (LLCullResult::drawinfo_iterator i = begin; i != end; ++i)
         {
             LLDrawInfo& params = **i;
+
+            if(params.mFace)
+            {
+                LLViewerObject* vobj = (LLViewerObject *)params.mFace->getViewerObject();
+
+                if(vobj && vobj->isAttachment())
+                {
+                    trackAttachments( vobj, params.mFace->isState(LLFace::RIGGED), &ratPtr );
+                }
+            }
 
             LLGLSLShader::sCurBoundShaderPtr->setMinimumAlpha(params.mAlphaMaskCutoff);
             LLDrawPoolBump::bindBumpMap(params, bump_channel);
@@ -1337,9 +1359,20 @@ void LLDrawPoolBump::renderBump(U32 type, U32 mask)
     LLCullResult::drawinfo_iterator begin = gPipeline.beginRenderMap(type);
     LLCullResult::drawinfo_iterator end = gPipeline.endRenderMap(type);
 
+    std::unique_ptr<LLPerfStats::RecordAttachmentTime> ratPtr{};
 	for (LLCullResult::drawinfo_iterator i = begin; i != end; ++i)	
 	{
 		LLDrawInfo& params = **i;
+
+        if(params.mFace)
+        {
+            LLViewerObject* vobj = (LLViewerObject *)params.mFace->getViewerObject();
+
+            if( vobj && vobj->isAttachment() )
+            {
+                trackAttachments( vobj, params.mFace->isState(LLFace::RIGGED), &ratPtr );
+            }
+        }
 
 		if (LLDrawPoolBump::bindBumpMap(params))
 		{

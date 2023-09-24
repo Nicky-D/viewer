@@ -213,8 +213,7 @@ bool contains_nocopy_items(const LLUUID& id)
     return false;
 }
 
-// Generates a string containing the path to the item specified by
-// item_id.
+// Generates a string containing the path to the item specified by id.
 void append_path(const LLUUID& id, std::string& path)
 {
 	std::string temp;
@@ -232,6 +231,36 @@ void append_path(const LLUUID& id, std::string& path)
 		}
 	}
 	path.append(temp);
+}
+
+// Generates a string containing the path name of the object.
+std::string make_path(const LLInventoryObject* object)
+{
+    std::string path;
+    append_path(object->getUUID(), path);
+    return path + "/" + object->getName();
+}
+
+// Generates a string containing the path name of the object specified by id.
+std::string make_inventory_path(const LLUUID& id)
+{
+    if (LLInventoryObject* object = gInventory.getObject(id))
+        return make_path(object);
+    return "";
+}
+
+// Generates a string containing the path name and id of the object.
+std::string make_info(const LLInventoryObject* object)
+{
+    return "'" + make_path(object) + "' (" + object->getUUID().asString() + ")";
+}
+
+// Generates a string containing the path name and id of the object specified by id.
+std::string make_inventory_info(const LLUUID& id)
+{
+    if (LLInventoryObject* object = gInventory.getObject(id))
+        return make_info(object);
+    return "<Inventory object not found!> (" + id.asString() + ")";
 }
 
 void update_marketplace_folder_hierarchy(const LLUUID cat_id)
@@ -529,7 +558,11 @@ BOOL get_is_item_worn(const LLUUID& id)
 	const LLViewerInventoryItem* item = gInventory.getItem(id);
 	if (!item)
 		return FALSE;
-
+    
+    if (item->getIsLinkType() && !gInventory.getItem(item->getLinkedUUID()))
+    {
+        return FALSE;
+    }
 	// Consider the item as worn if it has links in COF.
 	if (LLAppearanceMgr::instance().isLinkedInCOF(id))
 	{
@@ -787,7 +820,7 @@ void show_item_original(const LLUUID& item_uuid)
         LLPanelMainInventory* main_inventory = sidepanel_inventory->getMainInventoryPanel();
         if (main_inventory)
         {
-            main_inventory->resetFilters();
+            main_inventory->resetAllItemsFilters();
         }
         reset_inventory_filter();
 
@@ -795,6 +828,7 @@ void show_item_original(const LLUUID& item_uuid)
         {
             LLFloaterReg::toggleInstanceOrBringToFront("inventory");
         }
+        sidepanel_inventory->showInventoryPanel();
 
         const LLUUID inbox_id = gInventory.findCategoryUUIDForType(LLFolderType::FT_INBOX);
         if (gInventory.isObjectDescendentOf(gInventory.getLinkedItemID(item_uuid), inbox_id))
@@ -1406,13 +1440,11 @@ bool move_item_to_marketplacelistings(LLInventoryItem* inv_item, LLUUID dest_fol
                 LLNotificationsUtil::add("MerchantPasteFailed", subs);
                 return false;
             }
-            
-            // Get the parent folder of the moved item : we may have to update it
-            LLUUID src_folder = viewer_inv_item->getParentUUID();
 
             if (copy)
             {
                 // Copy the item
+                LL_INFOS("SLM") << "Copy item '" << make_info(viewer_inv_item) << "' to '" << make_inventory_path(dest_folder) << "'" << LL_ENDL;
                 LLPointer<LLInventoryCallback> cb = new LLBoostFuncInventoryCallback(boost::bind(update_folder_cb, dest_folder));
                 copy_inventory_item(
                                     gAgent.getID(),
@@ -1424,6 +1456,7 @@ bool move_item_to_marketplacelistings(LLInventoryItem* inv_item, LLUUID dest_fol
             }
             else
             {
+                LL_INFOS("SLM") << "Move item '" << make_info(viewer_inv_item) << "' to '" << make_inventory_path(dest_folder) << "'" << LL_ENDL;
                 // Reparent the item
                 gInventory.changeItemParent(viewer_inv_item, dest_folder, true);
             }
@@ -1470,6 +1503,7 @@ bool move_folder_to_marketplacelistings(LLInventoryCategory* inv_cat, const LLUU
         }
         else
         {
+            LL_INFOS("SLM") << "Move category " << make_info(viewer_inv_cat) << " to '" << make_inventory_path(dest_folder) << "'" << LL_ENDL;
             // Reparent the folder
             gInventory.changeCategoryParent(viewer_inv_cat, dest_folder, false);
             // Check the destination folder recursively for no copy items and promote the including folders if any
@@ -2653,7 +2687,12 @@ void LLInventoryAction::doToSelected(LLInventoryModel* model, LLFolderView* root
     }
     else
     {
-        std::copy(selected_uuid_set.begin(), selected_uuid_set.end(), std::back_inserter(ids));
+        for (std::set<LLFolderViewItem*>::iterator it = selected_items.begin(), end_it = selected_items.end();
+            it != end_it;
+            ++it)
+        {
+            ids.push_back(static_cast<LLFolderViewModelItemInventory*>((*it)->getViewModelItem())->getUUID());
+        }
     }
 
     // Check for actions that get handled in bulk
@@ -2714,7 +2753,7 @@ void LLInventoryAction::doToSelected(LLInventoryModel* model, LLFolderView* root
     }
     else if ("ungroup_folder_items" == action)
     {
-        if (selected_uuid_set.size() == 1)
+        if (ids.size() == 1)
         {
             LLInventoryCategory* inv_cat = gInventory.getCategory(*ids.begin());
             if (!inv_cat || LLFolderType::lookupIsProtectedType(inv_cat->getPreferredType()))

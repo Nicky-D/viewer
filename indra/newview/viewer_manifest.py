@@ -51,7 +51,7 @@ sys.path.insert(0, os.path.join(viewer_dir, os.pardir, "lib", "python"))
 from indra.util.llmanifest import LLManifest, main, path_ancestors, CHANNEL_VENDOR_BASE, RELEASE_CHANNEL, ManifestError, MissingError
 
 try:
-    from llbase import llsd
+    import llsd
     LLBASE_IMPORTED=True
 except:
     LLBASE_IMPORTED=False
@@ -80,7 +80,7 @@ class ViewerManifest(LLManifest):
                 # include the entire shaders directory recursively
                 self.path("shaders")
                 # include the extracted list of contributors
-                contributions_path = "../../doc/contributions.txt"
+                contributions_path = os.path.join(self.args['source'], "..", "..", "doc", "contributions.txt")
                 contributor_names = self.extract_names(contributions_path)
                 self.put_in_file(contributor_names.encode(), "contributors.txt", src=contributions_path)
 
@@ -445,7 +445,7 @@ class WindowsManifest(ViewerManifest):
             self.cmakedirs(os.path.dirname(dst))
             self.created_paths.append(dst)
             if not os.path.isdir(src):
-                if(self.args['configuration'].lower() == 'debug'):
+                if(self.args['buildtype'].lower() == 'debug'):
                     test_assembly_binding(src, "Microsoft.VC80.DebugCRT", "8.0.50727.4053")
                 else:
                     test_assembly_binding(src, "Microsoft.VC80.CRT", "8.0.50727.4053")
@@ -468,7 +468,7 @@ class WindowsManifest(ViewerManifest):
             self.created_paths.append(dst)
             if not os.path.isdir(src):
                 try:
-                    if(self.args['configuration'].lower() == 'debug'):
+                    if(self.args['buildtype'].lower() == 'debug'):
                         test_assembly_binding(src, "Microsoft.VC80.DebugCRT", "")
                     else:
                         test_assembly_binding(src, "Microsoft.VC80.CRT", "")
@@ -514,10 +514,10 @@ class WindowsManifest(ViewerManifest):
         
         # Get shared libs from the shared libs staging directory
         with self.prefix(src=os.path.join(self.args['build'], os.pardir,
-                                          'sharedlibs', self.args['configuration'])):
+                                          'sharedlibs', self.args['buildtype'])):
             # Get fmodstudio dll if needed
             if self.args['fmodstudio'] == 'ON':
-                if(self.args['configuration'].lower() == 'debug'):
+                if(self.args['buildtype'].lower() == 'debug'):
                     self.path("fmodL.dll")
                 else:
                     self.path("fmod.dll")
@@ -528,7 +528,7 @@ class WindowsManifest(ViewerManifest):
                 self.path("alut.dll")
 
             # For textures
-            self.path("openjpeg.dll")
+            self.path("openjp2.dll")
 
             # Uriparser
             self.path("uriparser.dll")
@@ -613,7 +613,7 @@ class WindowsManifest(ViewerManifest):
 
             # MSVC DLLs needed for CEF and have to be in same directory as plugin
             with self.prefix(src=os.path.join(self.args['build'], os.pardir,
-                                              'sharedlibs', 'Release')):
+                                              'sharedlibs', self.args['buildtype'])):
                 self.path("msvcp140.dll")
                 self.path("vcruntime140.dll")
                 self.path_optional("vcruntime140_1.dll")
@@ -800,27 +800,15 @@ class WindowsManifest(ViewerManifest):
             
         # Check two paths, one for Program Files, and one for Program Files (x86).
         # Yay 64bit windows.
-        for ProgramFiles in 'ProgramFiles', 'ProgramFiles(x86)':
-            NSIS_path = os.path.expandvars(r'${%s}\NSIS\makensis.exe' % ProgramFiles)
-            if os.path.exists(NSIS_path):
-                break
-        installer_created=False
-        nsis_attempts=3
-        nsis_retry_wait=15
-        for attempt in range(nsis_attempts):
-            try:
-                self.run_command([NSIS_path, '/V2', self.dst_path_of(tempfile)])
-            except ManifestError as err:
-                if attempt+1 < nsis_attempts:
-                    print("nsis failed, waiting %d seconds before retrying" % nsis_retry_wait, file=sys.stderr)
-                    time.sleep(nsis_retry_wait)
-                    nsis_retry_wait*=2
-            else:
-                # NSIS worked! Done!
-                break
-        else:
-            print("Maximum nsis attempts exceeded; giving up", file=sys.stderr)
-            raise
+        nsis_path = "makensis.exe"
+        for program_files in '${programfiles}', '${programfiles(x86)}':
+            for nesis_path in 'NSIS', 'NSIS\\Unicode':
+                possible_path = os.path.expandvars(f"{program_files}\\{nesis_path}\\makensis.exe")
+                if os.path.exists(possible_path):
+                    nsis_path = possible_path
+                    break
+
+        self.run_command([possible_path, '/V2', self.dst_path_of(tempfile)])
 
         self.sign(installer_file)
         self.created_path(self.dst_path_of(installer_file))
@@ -919,7 +907,7 @@ class DarwinManifest(ViewerManifest):
                     # Let exception, if any, propagate -- if this doesn't
                     # work, we need the build to noisily fail!
                     oldpath = subprocess.check_output(
-                        ['objdump', '-macho', '-dylib-id', '-non-verbose',
+                        ['objdump', '--macho', '--dylib-id', '--non-verbose',
                          os.path.join(relpkgdir, "BugsplatMac.framework", "BugsplatMac")]
                         ).splitlines()[-1]  # take the last line of output
                     self.run_command(
@@ -1050,7 +1038,7 @@ class DarwinManifest(ViewerManifest):
 
                 # Fmod studio dylibs (vary based on configuration)
                 if self.args['fmodstudio'] == 'ON':
-                    if self.args['configuration'].lower() == 'debug':
+                    if self.args['buildtype'].lower() == 'debug':
                         for libfile in (
                                     "libfmodL.dylib",
                                     ):
@@ -1432,7 +1420,6 @@ class LinuxManifest(ViewerManifest):
             self.path("cef/libmedia_plugin_cef.so", "libmedia_plugin_cef.so" )
         with self.prefix(src=os.path.join(pkgdir, 'lib', 'release'), dst="lib"):
             self.path( "libcef.so" )
-            self.path( "libuuid.so*" )
         with self.prefix(src=os.path.join(pkgdir, 'lib', 'release', 'swiftshader'), dst=os.path.join("bin", "swiftshader") ):
             self.path( "*.so" )
         with self.prefix(src=os.path.join(pkgdir, 'lib', 'release', 'swiftshader'), dst=os.path.join("lib", "swiftshader") ):
@@ -1608,11 +1595,6 @@ class Linux_x86_64_Manifest(LinuxManifest):
             self.path("libexpat.so.*")
             self.path("libSDL*.so.*")
 
-            # SDL1
-            self.path("libdirectfb*.so*")
-            self.path("libdirect-*.so*")
-            self.path("libfusion*.so*")
-
             self.path("libjemalloc*.so")
 
             self.path("libhunspell-1.3.so*")
@@ -1639,7 +1621,6 @@ class Linux_x86_64_Manifest(LinuxManifest):
             self.path("libsnd*")
             self.path("libvivox*")
             self.path("libortp*")
-            self.path("libuuid*")
             self.path("*.crt")
  
         self.strip_binaries()

@@ -88,6 +88,7 @@
 #include "llcallstack.h"
 #include "llsculptidsize.h"
 #include "llavatarappearancedefines.h"
+#include "llperfstats.h" 
 
 const F32 FORCE_SIMPLE_RENDER_AREA = 512.f;
 const F32 FORCE_CULL_AREA = 8.f;
@@ -228,6 +229,9 @@ LLVOVolume::LLVOVolume(const LLUUID &id, const LLPCode pcode, LLViewerRegion *re
     mColorChanged = FALSE;
 	mSpotLightPriority = 0.f;
 
+	mSkinInfoFailed = false;
+	mSkinInfo = NULL;
+
 	mMediaImplList.resize(getNumTEs());
 	mLastFetchedMediaVersion = -1;
     mServerDrawableUpdateCount = 0;
@@ -243,6 +247,8 @@ LLVOVolume::~LLVOVolume()
 	mTextureAnimp = NULL;
 	delete mVolumeImpl;
 	mVolumeImpl = NULL;
+
+	gMeshRepo.unregisterMesh(this);
 
 	if(!mMediaImplList.empty())
 	{
@@ -851,10 +857,7 @@ void LLVOVolume::updateTextureVirtualSize(bool forced)
 	
 	if (isSculpted())
 	{
-		LLSculptParams *sculpt_params = (LLSculptParams *)getParameterEntry(LLNetworkData::PARAMS_SCULPT);
-		LLUUID id =  sculpt_params->getSculptTexture();
-		
-		updateSculptTexture();
+        updateSculptTexture();
 		
 		
 
@@ -1095,10 +1098,15 @@ BOOL LLVOVolume::setVolume(const LLVolumeParams &params_in, const S32 detail, bo
 			// if it's a mesh
 			if ((volume_params.getSculptType() & LL_SCULPT_TYPE_MASK) == LL_SCULPT_TYPE_MESH)
 			{
+				if (mSkinInfo && mSkinInfo->mMeshID != volume_params.getSculptID())
+				{
+					mSkinInfo = NULL;
+					mSkinInfoFailed = false;
+				}
+
 				if (!getVolume()->isMeshAssetLoaded())
 				{ 
 					//load request not yet issued, request pipeline load this mesh
-					LLUUID asset_id = volume_params.getSculptID();
 					S32 available_lod = gMeshRepo.loadMesh(this, volume_params, lod, last_lod);
 					if (available_lod != lod)
 					{
@@ -1106,6 +1114,14 @@ BOOL LLVOVolume::setVolume(const LLVolumeParams &params_in, const S32 detail, bo
 					}
 				}
 				
+				if (!mSkinInfo && !mSkinInfoFailed)
+				{
+					const LLMeshSkinInfo* skin_info = gMeshRepo.getSkinInfo(volume_params.getSculptID(), this);
+					if (skin_info)
+					{
+						notifySkinInfoLoaded(skin_info);
+					}
+				}
 			}
 			else // otherwise is sculptie
 			{
@@ -1158,6 +1174,9 @@ void LLVOVolume::updateSculptTexture()
 		{
 			mSculptTexture = LLViewerTextureManager::getFetchedTexture(id, FTT_DEFAULT, TRUE, LLGLTexture::BOOST_NONE, LLViewerTexture::LOD_TEXTURE);
 		}
+
+		mSkinInfoFailed = false;
+		mSkinInfo = NULL;
 	}
 	else
 	{
@@ -1210,6 +1229,20 @@ void LLVOVolume::notifyMeshLoaded()
         cav->notifyAttachmentMeshLoaded();
     }
     updateVisualComplexity();
+}
+
+void LLVOVolume::notifySkinInfoLoaded(const LLMeshSkinInfo* skin)
+{
+	mSkinInfoFailed = false;
+	mSkinInfo = skin;
+
+	notifyMeshLoaded();
+}
+
+void LLVOVolume::notifySkinInfoUnavailable()
+{
+	mSkinInfoFailed = true;
+	mSkinInfo = nullptr;
 }
 
 // sculpt replaces generate() for sculpted surfaces
@@ -3645,7 +3678,7 @@ const LLMeshSkinInfo* LLVOVolume::getSkinInfo() const
 {
     if (getVolume())
     {
-        return gMeshRepo.getSkinInfo(getMeshID(), this);
+         return mSkinInfo;
     }
     else
     {
@@ -5077,6 +5110,28 @@ LLControlAVBridge::LLControlAVBridge(LLDrawable* drawablep, LLViewerRegion* regi
 	mPartitionType = LLViewerRegion::PARTITION_CONTROL_AV;
 }
 
+void LLControlAVBridge::updateSpatialExtents()
+{
+	LL_PROFILE_ZONE_SCOPED_CATEGORY_DRAWABLE
+
+	LLControlAvatar* controlAvatar = getVObj()->getControlAvatar();
+
+	LLSpatialGroup* root = (LLSpatialGroup*)mOctree->getListener(0);
+
+	bool rootWasDirty = root->isDirty();
+
+	super::updateSpatialExtents(); // root becomes non-dirty here
+
+	// SL-18251 "On-screen animesh characters using pelvis offset animations
+	// disappear when root goes off-screen"
+	//
+	// Expand extents to include Control Avatar placed outside of the bounds
+	if (controlAvatar && (rootWasDirty || controlAvatar->mPlaying))
+	{
+		root->expandExtents(controlAvatar->mDrawable->getSpatialExtents(), *mDrawable->getXform());
+	}
+}
+
 bool can_batch_texture(LLFace* facep)
 {
 	if (facep->getTextureEntry()->getBumpmap())
@@ -5263,13 +5318,14 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 
 	if (mat)
 	{
+		BOOL is_alpha = (facep->getPoolType() == LLDrawPool::POOL_ALPHA) || (facep->getTextureEntry()->getColor().mV[3] < 0.999f) ? TRUE : FALSE;
 		if (type == LLRenderPass::PASS_ALPHA)
 		{
-			shader_mask = mat->getShaderMask(LLMaterial::DIFFUSE_ALPHA_MODE_BLEND);
+			shader_mask = mat->getShaderMask(LLMaterial::DIFFUSE_ALPHA_MODE_BLEND, is_alpha);
 		}
 		else
 		{
-			shader_mask = mat->getShaderMask();
+			shader_mask = mat->getShaderMask(LLMaterial::DIFFUSE_ALPHA_MODE_DEFAULT, is_alpha);
 		}
 	}
 
@@ -5404,7 +5460,7 @@ void LLVolumeGeometryManager::registerFace(LLSpatialGroup* group, LLFace* facep,
 			}
 		}
 		
-		if (type == LLRenderPass::PASS_ALPHA)
+		// if (type == LLRenderPass::PASS_ALPHA) // always populate the draw_info ptr
 		{ //for alpha sorting
 			facep->setDrawInfo(draw_info);
 		}
@@ -5605,6 +5661,7 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
         LL_PROFILE_ZONE_NAMED("rebuildGeom - face list");
 
 		//get all the faces into a list
+        std::unique_ptr<LLPerfStats::RecordAttachmentTime> ratPtr{};
 		for (LLSpatialGroup::element_iter drawable_iter = group->getDataBegin(); 
              drawable_iter != group->getDataEnd(); ++drawable_iter)
 		{
@@ -5635,6 +5692,11 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 			{
 				continue;
 			}
+
+            if(vobj->isAttachment())
+            {
+                trackAttachments( vobj, drawablep->isState(LLDrawable::RIGGED),&ratPtr);
+            }
 
 			LLVolume* volume = vobj->getVolume();
 			if (volume)
@@ -5818,15 +5880,20 @@ void LLVolumeGeometryManager::rebuildGeom(LLSpatialGroup* group)
 						}
 						else
 						{
-                            if (te->getColor().mV[3] > 0.f || te->getGlow() > 0.f)
-                            { //only treat as alpha in the pipeline if < 100% transparent
-                                drawablep->setState(LLDrawable::HAS_ALPHA);
-                                add_face(sAlphaFaces, alpha_count, facep);
-                            }
-                            else if (LLDrawPoolAlpha::sShowDebugAlpha)
-                            {
-                                add_face(sAlphaFaces, alpha_count, facep);
-                            }
+							if (te->getColor().mV[3] > 0.f || te->getGlow() > 0.f)
+							{ //only treat as alpha in the pipeline if < 100% transparent
+								drawablep->setState(LLDrawable::HAS_ALPHA);
+								add_face(sAlphaFaces, alpha_count, facep);
+							}
+							else if (LLDrawPoolAlpha::sShowDebugAlpha ||
+								(gPipeline.sRenderHighlight && !drawablep->getParent() &&
+								//only root objects are highlighted with red color in this case
+								drawablep->getVObj() && drawablep->getVObj()->flagScripted() &&
+								(LLPipeline::getRenderScriptedBeacons() ||
+								(LLPipeline::getRenderScriptedTouchBeacons() && drawablep->getVObj()->flagHandleTouch()))))
+							{ //draw the transparent face for debugging purposes using a custom texture
+								add_face(sAlphaFaces, alpha_count, facep);
+							}
 						}
 					}
 					else
@@ -6026,6 +6093,7 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
 
 			U32 buffer_count = 0;
 
+            std::unique_ptr<LLPerfStats::RecordAttachmentTime> ratPtr{};
 			for (LLSpatialGroup::element_iter drawable_iter = group->getDataBegin(); drawable_iter != group->getDataEnd(); ++drawable_iter)
 			{
 				LLDrawable* drawablep = (LLDrawable*)(*drawable_iter)->getDrawable();
@@ -6035,6 +6103,11 @@ void LLVolumeGeometryManager::rebuildMesh(LLSpatialGroup* group)
 					LLVOVolume* vobj = drawablep->getVOVolume();
 					
 					if (!vobj) continue;
+
+                    if (vobj->isAttachment())
+                    {
+                        trackAttachments( vobj, drawablep->isState(LLDrawable::RIGGED), &ratPtr );
+                    }
 					
 					if (debugLoggingEnabled("AnimatedObjectsLinkset"))
 					{
@@ -6255,7 +6328,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 	LLSpatialGroup::buffer_map_t buffer_map;
 
 	LLViewerTexture* last_tex = NULL;
-	S32 buffer_index = 0;
 
 	S32 texture_index_channels = 1;
 	
@@ -6268,11 +6340,6 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 	{
 		texture_index_channels = gDeferredAlphaProgram.mFeatures.mIndexedTextureChannels;
 	}
-    
-    if (distance_sort)
-    {
-        buffer_index = -1;
-    }
 
 	static LLCachedControl<U32> max_texture_index(gSavedSettings, "RenderMaxTextureIndex", 16);
 	texture_index_channels = llmin(texture_index_channels, (S32) max_texture_index);
@@ -6296,14 +6363,9 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 			tex = NULL;
 		}
 
-		if (last_tex == tex)
-		{
-			buffer_index++;
-		}
-		else
+		if (last_tex != tex)
 		{
 			last_tex = tex;
-			buffer_index = 0;
 		}
 
 		bool bake_sunlight = LLPipeline::sBakeSunlight && facep->getDrawable()->isStatic(); 
@@ -6471,10 +6533,16 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 		U32 indices_index = 0;
 		U16 index_offset = 0;
 
-		while (face_iter < i)
+        std::unique_ptr<LLPerfStats::RecordAttachmentTime> ratPtr;
+        while (face_iter < i)
 		{
 			//update face indices for new buffer
 			facep = *face_iter;
+            LLViewerObject* vobj = facep->getViewerObject();
+            if(vobj && vobj->isAttachment())
+            {
+                trackAttachments(vobj, LLPipeline::sShadowRender, &ratPtr);
+            }
 			if (buffer.isNull())
 			{
 				// Bulk allocation failed
@@ -6641,7 +6709,7 @@ U32 LLVolumeGeometryManager::genDrawInfo(LLSpatialGroup* group, U32 mask, LLFace
 						LLRenderPass::PASS_NORMSPEC_EMISSIVE,
 					};
 
-					U32 mask = mat->getShaderMask();
+					U32 mask = mat->getShaderMask(LLMaterial::DIFFUSE_ALPHA_MODE_DEFAULT, is_alpha);
 
 					llassert(mask < sizeof(pass)/sizeof(U32));
 

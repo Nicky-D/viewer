@@ -453,7 +453,7 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
     BOOL is_friend = (LLAvatarTracker::instance().getBuddyInfo(from_id) == NULL) ? false : true;
     BOOL accept_im_from_only_friend = gSavedPerAccountSettings.getBOOL("VoiceCallsFriendsOnly");
     BOOL is_linden = chat.mSourceType != CHAT_SOURCE_OBJECT &&
-        LLMuteList::getInstance()->isLinden(name);
+        LLMuteList::isLinden(name);
 
     chat.mMuted = is_muted;
     chat.mFromID = from_id;
@@ -521,7 +521,9 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                     dialog,
                     parent_estate_id,
                     region_id,
-                    position);
+                    position,
+                    false,      // is_region_msg
+                    timestamp);
 
                 if (!gIMMgr->isDNDMessageSend(session_id))
                 {
@@ -592,7 +594,8 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                         parent_estate_id,
                         region_id,
                         position,
-                        region_message);
+                        region_message,
+                        timestamp);
                 }
                 else
                 {
@@ -1111,7 +1114,9 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                     IM_SESSION_INVITE,
                     parent_estate_id,
                     region_id,
-                    position);
+                    position,
+                    false,      // is_region_msg
+                    timestamp);
             }
             else
             {
@@ -1131,12 +1136,14 @@ void LLIMProcessing::processNewMessage(LLUUID from_id,
                     from_id,
                     name,
                     buffer,
-                    IM_OFFLINE == offline,
-                    ll_safe_string((char*)binary_bucket),
+                    (IM_OFFLINE == offline),
+                    ll_safe_string((char*)binary_bucket),   // session name
                     IM_SESSION_INVITE,
                     parent_estate_id,
                     region_id,
-                    position);
+                    position,
+                    false,      // is_region_msg
+                    timestamp);
             }
             break;
 
@@ -1568,7 +1575,7 @@ void LLIMProcessing::requestOfflineMessagesCoro(std::string url)
         return;
     }
 
-    if (messages.emptyArray())
+    if (messages.size() == 0)
     {
         // Nothing to process
         return;
@@ -1624,14 +1631,19 @@ void LLIMProcessing::requestOfflineMessagesCoro(std::string url)
             from_group = message_data["from_group"].asString() == "Y";
         }
 
-
+        EInstantMessage dialog = static_cast<EInstantMessage>(message_data["dialog"].asInteger());
+        LLUUID session_id = message_data["transaction-id"].asUUID();
+        if (session_id.isNull() && dialog == IM_FROM_TASK)
+        {
+            session_id = message_data["asset_id"].asUUID();
+        }
         LLIMProcessing::processNewMessage(
             message_data["from_agent_id"].asUUID(),
             from_group,
             message_data["to_agent_id"].asUUID(),
             message_data.has("offline") ? static_cast<U8>(message_data["offline"].asInteger()) : IM_OFFLINE,
-            static_cast<EInstantMessage>(message_data["dialog"].asInteger()),
-            message_data["transaction-id"].asUUID(),
+            dialog,
+            session_id,
             static_cast<U32>(message_data["timestamp"].asInteger()),
             message_data["from_agent_name"].asString(),
             message_data["message"].asString(),

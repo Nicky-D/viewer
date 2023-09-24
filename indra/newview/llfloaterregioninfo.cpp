@@ -317,7 +317,6 @@ void LLFloaterRegionInfo::onOpen(const LLSD& key)
 	}
 	refreshFromRegion(gAgent.getRegion());
 	requestRegionInfo();
-	requestMeshRezInfo();
 
 	if (!mGodLevelChangeSlot.connected())
 	{
@@ -657,13 +656,11 @@ void LLFloaterRegionInfo::refreshFromRegion(LLViewerRegion* region)
 	}
 
 	// call refresh from region on all panels
-	std::for_each(
-		mInfoPanels.begin(),
-		mInfoPanels.end(),
-		llbind2nd(
-			std::mem_fun(&LLPanelRegionInfo::refreshFromRegion),
-			region));
-    mEnvironmentPanel->refreshFromRegion(region);
+	for (const auto& infoPanel : mInfoPanels)
+	{
+		infoPanel->refreshFromRegion(region);
+	}
+	mEnvironmentPanel->refreshFromRegion(region);
 }
 
 // public
@@ -1006,19 +1003,6 @@ bool LLPanelRegionGeneralInfo::onMessageCommit(const LLSD& notification, const L
 	LLUUID invoice(LLFloaterRegionInfo::getLastInvoice());
 	sendEstateOwnerMessage(gMessageSystem, "simulatormessage", invoice, strings);
 	return false;
-}
-
-void LLFloaterRegionInfo::requestMeshRezInfo()
-{
-	std::string sim_console_url = gAgent.getRegionCapability("SimConsoleAsync");
-
-	if (!sim_console_url.empty())
-	{
-		std::string request_str = "get mesh_rez_enabled";
-		
-        LLCoreHttpUtil::HttpCoroutineAdapter::messageHttpPost(sim_console_url, LLSD(request_str),
-            "Requested mesh_rez_enabled", "Error requesting mesh_rez_enabled");
-	}
 }
 
 // setregioninfo
@@ -1882,6 +1866,7 @@ BOOL LLPanelEstateInfo::postBuild()
 	initCtrl("allow_direct_teleport");
 	initCtrl("limit_payment");
 	initCtrl("limit_age_verified");
+    initCtrl("limit_bots");
 	initCtrl("voice_chat_check");
     initCtrl("parcel_access_override");
 
@@ -1905,12 +1890,14 @@ void LLPanelEstateInfo::refresh()
 	getChildView("Only Allow")->setEnabled(public_access);
 	getChildView("limit_payment")->setEnabled(public_access);
 	getChildView("limit_age_verified")->setEnabled(public_access);
+    getChildView("limit_bots")->setEnabled(public_access);
 
 	// if this is set to false, then the limit fields are meaningless and should be turned off
 	if (public_access == false)
 	{
 		getChild<LLUICtrl>("limit_payment")->setValue(false);
 		getChild<LLUICtrl>("limit_age_verified")->setValue(false);
+        getChild<LLUICtrl>("limit_bots")->setValue(false);
 	}
 }
 
@@ -1927,6 +1914,7 @@ void LLPanelEstateInfo::refreshFromEstate()
 	getChild<LLUICtrl>("limit_payment")->setValue(estate_info.getDenyAnonymous());
 	getChild<LLUICtrl>("limit_age_verified")->setValue(estate_info.getDenyAgeUnverified());
     getChild<LLUICtrl>("parcel_access_override")->setValue(estate_info.getAllowAccessOverride());
+    getChild<LLUICtrl>("limit_bots")->setValue(estate_info.getDenyScriptedAgents());
 
 	// Ensure appriopriate state of the management UI
 	updateControls(gAgent.getRegion());
@@ -1970,6 +1958,7 @@ bool LLPanelEstateInfo::callbackChangeLindenEstate(const LLSD& notification, con
 			estate_info.setDenyAgeUnverified(getChild<LLUICtrl>("limit_age_verified")->getValue().asBoolean());
 			estate_info.setAllowVoiceChat(getChild<LLUICtrl>("voice_chat_check")->getValue().asBoolean());
             estate_info.setAllowAccessOverride(getChild<LLUICtrl>("parcel_access_override")->getValue().asBoolean());
+            estate_info.setDenyScriptedAgents(getChild<LLUICtrl>("limit_bots")->getValue().asBoolean());
             // JIGGLYPUFF
             //estate_info.setAllowAccessOverride(getChild<LLUICtrl>("")->getValue().asBoolean());
 			// send the update to sim
@@ -2806,7 +2795,7 @@ BOOL LLPanelEstateAccess::postBuild()
 	if (banned_name_list)
 	{
 		banned_name_list->setCommitOnSelectionChange(TRUE);
-		banned_name_list->setMaxItemCount(ESTATE_MAX_ACCESS_IDS);
+		banned_name_list->setMaxItemCount(ESTATE_MAX_BANNED_IDS);
 	}
 
 	getChild<LLUICtrl>("banned_search_input")->setCommitCallback(boost::bind(&LLPanelEstateAccess::onBannedSearchEdit, this, _2));
@@ -2950,10 +2939,10 @@ void LLPanelEstateAccess::onClickAddBannedAgent()
 {
 	LLCtrlListInterface *list = childGetListInterface("banned_avatar_name_list");
 	if (!list) return;
-	if (list->getItemCount() >= ESTATE_MAX_ACCESS_IDS)
+	if (list->getItemCount() >= ESTATE_MAX_BANNED_IDS)
 	{
 		LLSD args;
-		args["MAX_BANNED"] = llformat("%d", ESTATE_MAX_ACCESS_IDS);
+		args["MAX_BANNED"] = llformat("%d", ESTATE_MAX_BANNED_IDS);
 		LLNotificationsUtil::add("MaxBannedAgentsOnRegion", args);
 		return;
 	}
@@ -3191,13 +3180,13 @@ void LLPanelEstateAccess::accessAddCore3(const uuid_vec_t& ids, std::vector<LLAv
 		LLNameListCtrl* name_list = panel->getChild<LLNameListCtrl>("banned_avatar_name_list");
 		LLNameListCtrl* em_list = panel->getChild<LLNameListCtrl>("estate_manager_name_list");
 		int currentCount = (name_list ? name_list->getItemCount() : 0);
-		if (ids.size() + currentCount > ESTATE_MAX_ACCESS_IDS)
+		if (ids.size() + currentCount > ESTATE_MAX_BANNED_IDS)
 		{
 			LLSD args;
 			args["NUM_ADDED"] = llformat("%d", ids.size());
-			args["MAX_AGENTS"] = llformat("%d", ESTATE_MAX_ACCESS_IDS);
+			args["MAX_AGENTS"] = llformat("%d", ESTATE_MAX_BANNED_IDS);
 			args["LIST_TYPE"] = LLTrans::getString("RegionInfoListTypeBannedAgents");
-			args["NUM_EXCESS"] = llformat("%d", (ids.size() + currentCount) - ESTATE_MAX_ACCESS_IDS);
+			args["NUM_EXCESS"] = llformat("%d", (ids.size() + currentCount) - ESTATE_MAX_BANNED_IDS);
 			LLNotificationsUtil::add("MaxAgentOnRegionBatch", args);
 			delete change_info;
 			return;
@@ -3576,7 +3565,7 @@ void LLPanelEstateAccess::requestEstateGetAccessCoro(std::string url)
 	{
 		LLStringUtil::format_map_t args;
 		args["[BANNEDAGENTS]"] = llformat("%d", result["BannedAgents"].size());
-		args["[MAXBANNED]"] = llformat("%d", ESTATE_MAX_ACCESS_IDS);
+		args["[MAXBANNED]"] = llformat("%d", ESTATE_MAX_BANNED_IDS);
 		std::string msg = LLTrans::getString("RegionInfoBannedResidents", args);
 		panel->getChild<LLUICtrl>("ban_resident_label")->setValue(LLSD(msg));
 
