@@ -32,7 +32,6 @@ if (LINUX)
           libfltk.a
           ll::fontconfig
           ll::freetype
-          ll::glib
           )
 endif (LINUX)
 if( WINDOWS )

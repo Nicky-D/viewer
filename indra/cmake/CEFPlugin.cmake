@@ -33,8 +33,8 @@ elseif (DARWIN)
        )
 
 elseif (LINUX)
-    set(CEF_PLUGIN_LIBRARIES
-        dullahan
+    target_link_libraries( ll::cef INTERFACE
+        libdullahan.a
         cef
         cef_dll_wrapper.a
     )

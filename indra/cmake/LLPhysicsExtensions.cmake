@@ -34,7 +34,7 @@ else (HAVOK)
     GIT_TAG v1.1)
   FetchContent_Declare( ndNavMesh
     GIT_REPOSITORY https://github.com/Nicky-D/ndNavMesh.git
-    GIT_TAG v1.0)
+    GIT_TAG v1.1)
   FetchContent_MakeAvailable( ndMeshDecomposing ndNavMesh )
 
   target_link_libraries( llphysicsextensions_impl INTERFACE ndMeshDecomposing ndNavmesh)
