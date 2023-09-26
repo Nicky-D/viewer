@@ -18,7 +18,7 @@ if (NDOF)
   elseif (DARWIN)
     target_link_libraries( ll::ndof INTERFACE ndofdev)
   else( )
-    target_link_libraries( ll::ndof INTERFACE ndofdev_sdl2.a )
+    target_link_libraries( ll::ndof INTERFACE ndofdev_sdl3.a )
     target_include_directories( ll::ndof SYSTEM INTERFACE ${LIBS_PREBUILT_DIR}/include/${SDL_VERSION} )
   endif()
 

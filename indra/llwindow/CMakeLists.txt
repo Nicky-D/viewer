@@ -62,12 +62,8 @@ set(llwindow_LINK_LIBRARIES
 # Libraries on which this library depends, needed for Linux builds
 # Sort by high-level to low-level
 if (LINUX)
-  set (SDL_SOURCE_DIR SDL2 )
-	
-  list(APPEND viewer_SOURCE_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.cpp ${SDL_SOURCE_DIR}/llwindowsdl.cpp )
-  list(APPEND viewer_HEADER_FILES ${SDL_SOURCE_DIR}/llkeyboardsdl.h ${SDL_SOURCE_DIR}/llwindowsdl.h )
-
-
+  list(APPEND viewer_SOURCE_FILES ${SDL_VERSION}/llkeyboardsdl.cpp ${SDL_VERSION}/llwindowsdl.cpp )
+  list(APPEND viewer_HEADER_FILES ${SDL_VERSION}/llkeyboardsdl.h ${SDL_VERSION}/llwindowsdl.h )
 endif (LINUX)
 
 if (DARWIN)
@@ -154,7 +150,7 @@ add_library (llwindow
   )
 
 if( LINUX )
-  target_include_directories( llwindow PUBLIC ${SDL_SOURCE_DIR} )
+  target_include_directories( llwindow PUBLIC ${SDL_VERSION} )
 endif()
 
   target_link_libraries (llwindow ${llwindow_LINK_LIBRARIES})

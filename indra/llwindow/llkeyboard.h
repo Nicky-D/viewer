@@ -55,7 +55,7 @@ class LLWindowCallbacks;
 class LLKeyboard
 {
 public:
-#ifndef LL_SDL2
+#if LL_SDL_VERSION < 2
     typedef U16 NATIVE_KEY_TYPE;
 #else
     typedef U32 NATIVE_KEY_TYPE;

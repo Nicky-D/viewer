@@ -35,7 +35,7 @@ public:
 	LLKeyboardHeadless();
 	/*virtual*/ ~LLKeyboardHeadless() {};
 
-#ifndef LL_SDL2
+#if !defined(LL_SDL_VERSION) || LL_SDL_VERSION < 2
 	/*virtual*/ BOOL	handleKeyUp(const U16 key, MASK mask) { return FALSE; }
 	/*virtual*/ BOOL	handleKeyDown(const U16 key, MASK mask) { return FALSE; }
 #else
