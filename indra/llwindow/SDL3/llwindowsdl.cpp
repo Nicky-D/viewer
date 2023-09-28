@@ -634,6 +634,11 @@ void LLWindowSDL::tryFindFullscreenSize( int &width, int &height )
     }
 }
 
+void SDLCALL LogOutputFunction(void *userdata, int category, SDL_LogPriority priority, const char *message)
+{
+    LL_INFOS() << "SDL Log: " << message << LL_ENDL;
+}
+
 BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, BOOL fullscreen, BOOL disable_vsync)
 {
     //bool			glneedsinit = false;
@@ -645,11 +650,16 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
     mGrabbyKeyFlags = 0;
     mReallyCapturedCount = 0;
 
-    std::initializer_list<std::tuple< char const*, char const * > > hintList =
-            {
+    SDL_LogSetOutputFunction(LogOutputFunction, nullptr);
+
+    auto displayDriver = LLStringUtil::getenv("LL_VIDEO_DRIVER", "x11");
+
+    std::initializer_list<std::tuple< char const*, char const * > > hintList = {
+                    {SDL_HINT_EVENT_LOGGING, "1"},
                     {SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR,"0"},
                     {SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH,"1"},
-            };
+                    {SDL_HINT_VIDEO_DRIVER, displayDriver.c_str()}
+        };
 
     for( auto hint: hintList )
     {
@@ -687,6 +697,16 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
                << int(r_sdl_version.major) << "."
                << int(r_sdl_version.minor) << "."
                << int(r_sdl_version.patch) << LL_ENDL;
+
+    int drivers = SDL_GetNumVideoDrivers();
+    if( drivers <= 0 )
+    {
+        LL_WARNS() << "SDL_GetNumVideoDrivers failed: " << SDL_GetError() << LL_ENDL;
+    }
+    for( int i = 0; i < drivers; ++i )
+    {
+        LL_INFOS() << "SDL video driver: " << SDL_GetVideoDriver(i) << LL_ENDL;
+    }
 
     if (width == 0)
         width = 1024;
@@ -857,7 +877,6 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
         return FALSE;
     }
 
-#if LL_X11
     /* Grab the window manager specific information */
     SDL_SysWMinfo info{};
     auto err = SDL_GetWindowWMInfo(mWindow, &info,SDL_SYSWM_CURRENT_VERSION);
@@ -866,12 +885,18 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
         /* Save the information for later use */
         if ( info.subsystem == SDL_SYSWM_X11 )
         {
+#if LL_X11
             mSDL_Display = info.info.x11.display;
             mSDL_XWindowID = info.info.x11.window;
+#endif
             LL_INFOS() << "We're running under X11." << LL_ENDL;
         }
         else if( info.subsystem == SDL_SYSWM_WAYLAND )
         {
+#if LL_X11
+            mSDL_Display = info.info.x11.display;
+            mSDL_XWindowID = info.info.x11.window;
+#endif
             LL_INFOS() << "We're running under Wayland." << LL_ENDL;
         }
         else
@@ -884,8 +909,6 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
         SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Couldn't get window information: %s", SDL_GetError());
         LL_WARNS() << "We're not running under any known WM.  Wild." << LL_ENDL;
     }
-#endif // LL_X11
-
 
     SDL_StartTextInput();
     //make sure multisampling is disabled by default
@@ -1389,33 +1412,62 @@ void LLWindowSDL::flashIcon(F32 seconds)
 
 BOOL LLWindowSDL::isClipboardTextAvailable()
 {
+#if LL_X11
     return mSDL_Display && XGetSelectionOwner(mSDL_Display, XA_CLIPBOARD) != None;
+#else
+    return SDL_HasClipboardText();
+#endif
 }
 
 BOOL LLWindowSDL::pasteTextFromClipboard(LLWString &dst)
 {
+#if LL_X11
     return getSelectionText(XA_CLIPBOARD, dst);
+#else
+    char * data = SDL_GetClipboardText();
+    dst = utf8str_to_wstring(data);
+    SDL_free(data);
+#endif
 }
 
 BOOL LLWindowSDL::copyTextToClipboard(const LLWString &s)
 {
+#if LL_X11
     return setSelectionText(XA_CLIPBOARD, s);
+#else
+    std::string str = wstring_to_utf8str( s );
+    SDL_SetClipboardText(str.c_str());
+#endif
 }
 
 BOOL LLWindowSDL::isPrimaryTextAvailable()
 {
-    LLWString text;
-    return getSelectionText(XA_PRIMARY, text) && !text.empty();
+#if LL_X11
+    return mSDL_Display && XGetSelectionOwner(mSDL_Display, XA_CLIPBOARD) != None;
+#else
+    return SDL_HasPrimarySelectionText();
+#endif
 }
 
 BOOL LLWindowSDL::pasteTextFromPrimary(LLWString &dst)
 {
+#if LL_X11
     return getSelectionText(XA_PRIMARY, dst);
+#else
+    char * data = SDL_GetPrimarySelectionText();
+    dst = utf8str_to_wstring(data);
+    SDL_free(data);
+#endif
 }
 
 BOOL LLWindowSDL::copyTextToPrimary(const LLWString &s)
 {
+#if LL_X11
     return setSelectionText(XA_PRIMARY, s);
+#else
+    std::string str = wstring_to_utf8str( s );
+    SDL_SetPrimarySelectionText(str.c_str());
+#endif
 }
 
 LLWindow::LLWindowResolution* LLWindowSDL::getSupportedResolutions(S32 &num_resolutions)

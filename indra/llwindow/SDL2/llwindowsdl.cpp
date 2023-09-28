@@ -634,6 +634,11 @@ void LLWindowSDL::tryFindFullscreenSize( int &width, int &height )
     }
 }
 
+void SDLCALL LogOutputFunction(void *userdata, int category, SDL_LogPriority priority, const char *message)
+{
+    LL_INFOS() << "SDL Log: " << message << LL_ENDL;
+}
+
 BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, BOOL fullscreen, BOOL disable_vsync)
 {
     //bool			glneedsinit = false;
@@ -645,11 +650,16 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
     mGrabbyKeyFlags = 0;
     mReallyCapturedCount = 0;
 
-    std::initializer_list<std::tuple< char const*, char const * > > hintList =
-            {
+    SDL_LogSetOutputFunction(LogOutputFunction, nullptr);
+
+    auto displayDriver = LLStringUtil::getenv("LL_VIDEO_DRIVER", "x11");
+
+    std::initializer_list<std::tuple< char const*, char const * > > hintList = {
+                    {SDL_HINT_EVENT_LOGGING, "1"},
                     {SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR,"0"},
                     {SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH,"1"},
-            };
+                    {SDL_HINT_VIDEODRIVER, displayDriver.c_str()}
+        };
 
     for( auto hint: hintList )
     {
@@ -687,6 +697,16 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
                << int(r_sdl_version.major) << "."
                << int(r_sdl_version.minor) << "."
                << int(r_sdl_version.patch) << LL_ENDL;
+
+    int drivers = SDL_GetNumVideoDrivers();
+    if( drivers <= 0 )
+    {
+        LL_WARNS() << "SDL_GetNumVideoDrivers failed: " << SDL_GetError() << LL_ENDL;
+    }
+    for( int i = 0; i < drivers; ++i )
+    {
+        LL_INFOS() << "SDL video driver: " << SDL_GetVideoDriver(i) << LL_ENDL;
+    }
 
     if (width == 0)
         width = 1024;
@@ -857,7 +877,6 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
         return FALSE;
     }
 
-#if LL_X11
     /* Grab the window manager specific information */
     SDL_SysWMinfo info;
     SDL_VERSION(&info.version);
@@ -866,22 +885,29 @@ BOOL LLWindowSDL::createContext(int x, int y, int width, int height, int bits, B
         /* Save the information for later use */
         if ( info.subsystem == SDL_SYSWM_X11 )
         {
+#if LL_X11
             mSDL_Display = info.info.x11.display;
             mSDL_XWindowID = info.info.x11.window;
+#endif
+        }
+        else if( info.subsystem == SDL_SYSWM_WAYLAND )
+        {
+#if LL_X11
+            mSDL_Display = info.info.x11.display;
+            mSDL_XWindowID = info.info.x11.window;
+#endif
+            LL_INFOS() << "We're running under Wayland." << LL_ENDL;
         }
         else
         {
-            LL_WARNS() << "We're not running under X11?  Wild."
-                       << LL_ENDL;
+            LL_WARNS() << "We're not running under X11?  Wild." << LL_ENDL;
         }
     }
     else
     {
-        LL_WARNS() << "We're not running under any known WM.  Wild."
-                   << LL_ENDL;
+        SDL_LogError(SDL_LOG_CATEGORY_ERROR, "Couldn't get window information: %s", SDL_GetError());
+        LL_WARNS() << "We're not running under any known WM.  Wild." << LL_ENDL;
     }
-#endif // LL_X11
-
 
     SDL_StartTextInput();
     //make sure multisampling is disabled by default

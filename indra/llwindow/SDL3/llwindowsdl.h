@@ -35,7 +35,7 @@
 #include "SDL3/SDL.h"
 #include "SDL3/SDL_endian.h"
 
-#if LL_X11
+#if LL_X11 || LL_WAYLAND
 // get X11-specific headers for use in low-level stuff like copy-and-paste support
 #include "SDL3/SDL_syswm.h"
 #endif
@@ -226,14 +226,18 @@ private:
     std::string mInputType;
 
 public:
-#if LL_X11
-    static Display* getSDLDisplay();
     LLWString const& getPrimaryText() const { return mPrimaryClipboard; }
     LLWString const& getSecondaryText() const { return mSecondaryClipboard; }
     void clearPrimaryText()  { mPrimaryClipboard.clear(); }
     void clearSecondaryText() { mSecondaryClipboard.clear(); }
+
+#if LL_X11
+    static Display* getSDLDisplay();
+#endif
 private:
     void tryFindFullscreenSize( int &aWidth, int &aHeight );
+
+#if LL_X11
     void initialiseX11Clipboard();
 
     bool getSelectionText(Atom selection, LLWString& text);

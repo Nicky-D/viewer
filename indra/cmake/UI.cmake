@@ -6,7 +6,12 @@ include(GLIB)
 add_library( ll::uilibraries INTERFACE IMPORTED )
 
 if (LINUX)
-  target_compile_definitions(ll::uilibraries INTERFACE LL_FLTK=1 LL_X11=1 )
+
+  if( USE_WAYLAND )
+      target_compile_definitions(ll::uilibraries INTERFACE LL_FLTK=1 LL_WAYLAND=1 )
+  else()
+      target_compile_definitions(ll::uilibraries INTERFACE LL_FLTK=1 LL_X11=1 )
+  endif()
 
   if( USE_CONAN )
     target_link_libraries( ll::uilibraries INTERFACE CONAN_PKG::gtk )
