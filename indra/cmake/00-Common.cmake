@@ -120,7 +120,13 @@ if (LINUX)
     set(CMAKE_CXX_COMPILER_LAUNCHER ${CCACHE_EXE} )
   endif()
 
-  add_definitions(-D_FORTIFY_SOURCE=2)
+  if(DISABLE_OPTIMIZATIONS )
+    string(REPLACE "-O3" "-O0" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
+    string(REPLACE "-O3" "-O0" CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE}")
+    string(REPLACE "-O3" "-O0" CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE}")
+  else()
+    add_definitions(-D_FORTIFY_SOURCE=2)
+  endif()
 
   set(CMAKE_EXE_LINKER_FLAGS "-Wl,--exclude-libs,ALL")
 
