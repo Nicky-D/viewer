@@ -12,8 +12,8 @@ if( USE_SYSROOT )
   set( SYSROOT_NAME prebuild_files )
   if (${CMAKE_SYSTEM_NAME} MATCHES "Linux")
 	FetchContent_Declare( ${SYSROOT_NAME}
-	  URL https://github.com/Nicky-D/_build-all-3ps/releases/download/v0.23/sysroot-glibc-2.35.tar.xz
-	  URL_HASH MD5=8ebe6e9964c8476808fe632c935c5a36
+	  URL https://github.com/Nicky-D/_build-all-3ps/releases/download/v0.27/sysroot-glibc-2.31.tar.xz
+	  URL_HASH MD5=efbf98af99854eb53f1b36b9044fd66a
 	  )
   endif()
   FetchContent_MakeAvailable( ${SYSROOT_NAME} )
