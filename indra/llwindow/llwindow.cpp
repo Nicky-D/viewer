@@ -30,7 +30,8 @@
 #if LL_MESA_HEADLESS
 #include "llwindowmesaheadless.h"
 #elif LL_SDL
-#include "llwindowsdl.h"
+#include "SDL2/llwindowsdl.h"
+#include "SDL3/llwindowsdl.h"
 #elif LL_WINDOWS
 #include "llwindowwin32.h"
 #elif LL_DARWIN

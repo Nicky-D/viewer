@@ -34,7 +34,6 @@
 #include "llurldispatcher.h"		// SLURL from other app instance
 #include "llviewernetwork.h"
 #include "llviewercontrol.h"
-#include "llwindowsdl.h"
 #include "llmd5.h"
 #include "llfindlocale.h"
 

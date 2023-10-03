@@ -62,8 +62,10 @@ set(llwindow_LINK_LIBRARIES
 # Libraries on which this library depends, needed for Linux builds
 # Sort by high-level to low-level
 if (LINUX)
-  list(APPEND viewer_SOURCE_FILES ${SDL_VERSION}/llkeyboardsdl.cpp ${SDL_VERSION}/llwindowsdl.cpp )
-  list(APPEND viewer_HEADER_FILES ${SDL_VERSION}/llkeyboardsdl.h ${SDL_VERSION}/llwindowsdl.h )
+    list(APPEND viewer_SOURCE_FILES SDL2/llkeyboardsdl.cpp SDL2/llwindowsdl.cpp )
+    list(APPEND viewer_SOURCE_FILES SDL3/llkeyboardsdl.cpp SDL3/llwindowsdl.cpp )
+    list(APPEND viewer_HEADER_FILES SDL2/llkeyboardsdl.h SDL2/llwindowsdl.h )
+    list(APPEND viewer_HEADER_FILES SDL3/llkeyboardsdl.h SDL3/llwindowsdl.h )
 endif (LINUX)
 
 if (DARWIN)
@@ -148,10 +150,6 @@ add_library (llwindow
   ${llwindow_SOURCE_FILES}
   ${viewer_SOURCE_FILES}
   )
-
-if( LINUX )
-  target_include_directories( llwindow PUBLIC ${SDL_VERSION} )
-endif()
 
   target_link_libraries (llwindow ${llwindow_LINK_LIBRARIES})
   target_include_directories(llwindow INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
