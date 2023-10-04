@@ -31,9 +31,7 @@
 
 // Simple Directmedia Layer (http://libsdl.org/) implementation of LLWindow class
 
-#include "llwindow.h"
-#include "lltimer.h"
-
+#include "llwindowsdl_base.h"
 #include "SDL2/SDL.h"
 #include "SDL2/SDL_endian.h"
 
@@ -42,15 +40,10 @@
 #include "SDL2/SDL_syswm.h"
 #endif
 
-// AssertMacros.h does bad things.
-#include "fix_macros.h"
-#undef verify
-#undef require
-
 #include "linux/windows_impl.h"
 #include "linux/clipboard_impl.h"
 
-class LLWindowSDL : public LLWindow
+class LLWindowSDL : public LLWindowSDLBase
 {
     EDisplayServer mDisplayServer = EDisplayServer::eUnknown;
 

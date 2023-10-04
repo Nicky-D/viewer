@@ -31,8 +31,7 @@
 
 // Simple Directmedia Layer (http://libsdl.org/) implementation of LLWindow class
 
-#include "llwindow.h"
-#include "lltimer.h"
+#include "llwindowsdl_base.h"
 
 #include "SDL3/SDL.h"
 #include "SDL3/SDL_endian.h"
@@ -50,7 +49,7 @@
 #include "linux/windows_impl.h"
 #include "linux/clipboard_impl.h"
 
-class LLWindowSDL : public LLWindow
+class LLWindowSDL : public LLWindowSDLBase
 {
     EDisplayServer mDisplayServer = EDisplayServer::eUnknown;
 
